@@ -27,8 +27,19 @@ import numpy as np
 # Data
 # ---------------------------------------------------------------------------
 
+def resolve_proportion(value, total):
+    """If `value` is a float in (0, 1), treat it as a proportion of `total`
+    and round to an absolute count; otherwise return it unchanged. Shared by
+    --n (proportion of the full dataset) and --n-lines (proportion of a
+    pair type's available pool)."""
+    if isinstance(value, float) and 0 < value < 1:
+        return round(value * total)
+    return value
+
+
 def load_mnist(n=None, seed=0):
-    """Load MNIST, optionally subsampled to `n` points. n=None loads all ~70_000."""
+    """Load MNIST, optionally subsampled to `n` points (or a proportion of
+    the full ~70_000 if `n` is a float in (0, 1)). n=None loads all of it."""
     try:
         from tensorflow.keras.datasets import mnist
         (Xtr, ytr), _ = mnist.load_data()
@@ -41,6 +52,7 @@ def load_mnist(n=None, seed=0):
         Xfull = d.data.astype(np.float32) / 255.0
         yfull = d.target.astype(int)
 
+    n = resolve_proportion(n, len(Xfull))
     rs = np.random.RandomState(seed)
     sel = np.arange(len(Xfull)) if n is None else rs.choice(len(Xfull), n, replace=False)
 
@@ -113,6 +125,9 @@ def camera_path(trace, smooth_window=15, headroom=1.15, fixed=False):
 
 
 def subsample_pairs(pairs, m, rs):
+    """Draw `m` pairs (or a proportion of `len(pairs)` if `m` is a float in
+    (0, 1)) for rendering."""
+    m = resolve_proportion(m, len(pairs))
     return pairs[rs.choice(len(pairs), min(m, len(pairs)), replace=False)]
 
 
@@ -181,6 +196,7 @@ def render_animation(
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
+    line_alpha=1.0,
 ):
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
@@ -234,9 +250,9 @@ def render_animation(
         w_MN, w_NB, w_FP = W[f]
         a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
         scat.set_offsets(Y)
-        lc_nb.set_segments(seg(Y, PN)); lc_nb.set_alpha(a_nb)
-        lc_mn.set_segments(seg(Y, PM)); lc_mn.set_alpha(a_mn)
-        lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(a_fp)
+        lc_nb.set_segments(seg(Y, PN)); lc_nb.set_alpha(min(1.0, a_nb * line_alpha))
+        lc_mn.set_segments(seg(Y, PM)); lc_mn.set_alpha(min(1.0, a_mn * line_alpha))
+        lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(min(1.0, a_fp * line_alpha))
         L = r_s[f]; ax.set_xlim(-L, L); ax.set_ylim(-L, L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
@@ -310,6 +326,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         edge_style_preset=cfg["edge_style_preset"],
         edge_gamma=cfg["edge_gamma"],
         overlay_style_preset=cfg["overlay_style_preset"],
+        line_alpha=cfg["line_alpha"],
     )
 
 
@@ -329,6 +346,7 @@ DEFAULT_CONFIG = {
     "edge_style_preset": "v1",  # "v1" (raw per-type weight) or "v2" (normalized/gamma-compressed)
     "edge_gamma": 0.2,         # v2 only: compression exponent for weight ratios
     "overlay_style_preset": "v2",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
+    "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
@@ -363,6 +381,7 @@ TAG_PARAMS = [
     ("point_alpha", "palpha"),
     ("edge_style_preset", "edge"),
     ("edge_gamma", "gamma"),
+    ("line_alpha", "linealpha"),
     ("fixed_camera", "camfixed"),
 ]
 
@@ -395,13 +414,22 @@ def load_config(config_path):
     return cfg
 
 
+def parse_count_arg(value):
+    """Parse a --n/--n-lines CLI value: an absolute integer, or a fraction in
+    (0, 1) treated as a proportion of the relevant total at the point of use
+    (see resolve_proportion())."""
+    v = float(value)
+    return v if 0 < v < 1 else int(v)
+
+
 def parse_args(argv=None):
     d = DEFAULT_CONFIG
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", type=str, default=None,
                     help="JSON config file; CLI flags override its values. Unset fields fall back to the built-in defaults shown below")
     p.add_argument("--n", type=str, default=None,
-                    help=f"subsample size, or 'all' for the full ~70,000 points (default: {d['n']})")
+                    help=f"subsample size, a fraction in (0, 1) for a proportion of the full "
+                         f"~70,000 points, or 'all' for all of them (default: {d['n']})")
     p.add_argument("--algorithm", choices=["pacmap", "localmap", "both"], default=None,
                     help=f"(default: {d['algorithm']})")
     p.add_argument("--n-neighbors", type=int, default=None,
@@ -414,8 +442,9 @@ def parse_args(argv=None):
                     help=f"comma-separated PaCMAP phase lengths, e.g. 100,100,250 (default: {','.join(map(str, d['num_iters']))})")
     p.add_argument("--seed", type=int, default=None,
                     help=f"(default: {d['seed']})")
-    p.add_argument("--n-lines", type=int, default=None,
-                    help=f"pairs drawn per pair-type per frame (default: {d['n_lines']})")
+    p.add_argument("--n-lines", type=str, default=None,
+                    help=f"pairs drawn per pair-type per frame, or a fraction in (0, 1) for a "
+                         f"proportion of that pair type's available pool (default: {d['n_lines']})")
     p.add_argument("--step", type=int, default=None,
                     help=f"render every Nth captured iteration (default: {d['step']})")
     p.add_argument("--fps", type=int, default=None,
@@ -434,6 +463,9 @@ def parse_args(argv=None):
     p.add_argument("--edge-gamma", type=float, default=None,
                     help="v2 edge-style-preset only: exponent compressing per-frame weight "
                          f"ratios before mapping to alpha; lower = weaker types more visible (default: {d['edge_gamma']})")
+    p.add_argument("--line-alpha", type=float, default=None,
+                    help="multiplier applied to every edge line's alpha; turn down when "
+                         f"--n-lines is high so overlapping lines don't wash out (default: {d['line_alpha']})")
     p.add_argument("--fixed-camera", action="store_true", default=None,
                     help="lock a single camera radius sized to the trace's largest extent "
                          "instead of the default smoothed zoom-out, so you can see the true "
@@ -452,7 +484,7 @@ def parse_args(argv=None):
 def build_config(args):
     cfg = load_config(args.config)
     if args.n is not None:
-        cfg["n"] = None if args.n.strip().lower() == "all" else int(args.n)
+        cfg["n"] = None if args.n.strip().lower() == "all" else parse_count_arg(args.n)
     overrides = {
         "algorithm": args.algorithm,
         "n_neighbors": args.n_neighbors,
@@ -460,13 +492,14 @@ def build_config(args):
         "fp_ratio": args.fp_ratio,
         "num_iters": [int(x) for x in args.num_iters.split(",")] if args.num_iters else None,
         "seed": args.seed,
-        "n_lines": args.n_lines,
+        "n_lines": parse_count_arg(args.n_lines) if args.n_lines is not None else None,
         "step": args.step,
         "fps": args.fps,
         "point_size": args.point_size,
         "point_alpha": args.point_alpha,
         "edge_style_preset": args.edge_style_preset,
         "edge_gamma": args.edge_gamma,
+        "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
         "output_dir": args.output_dir,
     }
