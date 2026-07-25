@@ -1,4 +1,5 @@
 # /// script
+# requires-python = ">=3.10"
 # dependencies = [
 #     "marimo",
 #     "numpy",
@@ -307,17 +308,18 @@ def _(
 
     t0 = time.time()
     anim = FuncAnimation(fig, update, frames=frames, interval=1000 // FPS, blit=False)
-    anim.save("pacmap_mnist.mp4", writer="ffmpeg", fps=FPS,
+    pacmap_video_path = "pacmap_mnist.mp4"
+    anim.save(pacmap_video_path, writer="ffmpeg", fps=FPS,
               savefig_kwargs={"facecolor": BG})
     plt.close(fig)
 
     print("PaCMAP rendered in %.0fs" % (time.time() - t0))
-    return FPS, N_LINES, STEP, it, seg, sub
+    return FPS, N_LINES, STEP, it, pacmap_video_path, seg, sub
 
 
 @app.cell
-def _(mo):
-    mo.video(src="pacmap_mnist.mp4", width=640)
+def _(mo, pacmap_video_path):
+    mo.video(src=pacmap_video_path, width=640)
     return
 
 
@@ -404,15 +406,16 @@ def _(
         return ()  # Update title text
     t0_lm = time.time()
     anim_lm = FuncAnimation(fig_lm, update_lm, frames=frames_lm, interval=1000 // FPS, blit=False)
-    anim_lm.save('localmap_mnist.mp4', writer='ffmpeg', fps=FPS, savefig_kwargs={'facecolor': BG_lm})
+    localmap_video_path = 'localmap_mnist.mp4'
+    anim_lm.save(localmap_video_path, writer='ffmpeg', fps=FPS, savefig_kwargs={'facecolor': BG_lm})
     plt.close(fig_lm)
     print('LocalMAP rendered in %.0fs' % (time.time() - t0_lm))
-    return
+    return (localmap_video_path,)
 
 
 @app.cell
-def _(mo):
-    mo.video(src="localmap_mnist.mp4", width=640)
+def _(mo, localmap_video_path):
+    mo.video(src=localmap_video_path, width=640)
     return
 
 
