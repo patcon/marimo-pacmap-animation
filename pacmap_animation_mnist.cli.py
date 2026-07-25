@@ -215,7 +215,7 @@ def unique_path(path):
         n += 1
 
 
-def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
+def run_algorithm(X, y, rs, algorithm, cfg, out_path):
     trace, pair_neighbors, pair_MN, pair_FP = fit_trace(
         X,
         algorithm,
@@ -227,7 +227,6 @@ def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
     )
     W = weight_schedule(cfg["num_iters"])
     r_s = camera_path(trace, fixed=cfg["fixed_camera"])
-    out_path = unique_path(Path(output_dir) / f"{algorithm}_mnist.mp4")
     return render_animation(
         trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], r_s, rs,
         out_path=str(out_path),
@@ -393,11 +392,16 @@ def main(argv=None):
     if args.tag_output:
         output_dir = output_dir / param_tag(cfg)
     output_dir.mkdir(parents=True, exist_ok=True)
-    X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
 
     algorithms = ["pacmap", "localmap"] if cfg["algorithm"] == "both" else [cfg["algorithm"]]
+    # Resolve (and confirm any overwrite of) output filenames before running
+    # any computation, so approval doesn't happen after a long fit/render.
+    out_paths = {a: unique_path(output_dir / f"{a}_mnist.mp4") for a in algorithms}
+
+    X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
+
     for algorithm in algorithms:
-        run_algorithm(X, y, rs, algorithm, cfg, output_dir)
+        run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm])
 
 
 if __name__ == "__main__":
