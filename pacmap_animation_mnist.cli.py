@@ -236,7 +236,7 @@ DEFAULT_CONFIG = {
     "algorithm": "both",       # "pacmap", "localmap", or "both"
     "n_neighbors": 10,
     "mn_ratio": 0.5,
-    "fp_ratio": 0.2,
+    "fp_ratio": 2.0,
     "num_iters": [100, 100, 250],
     "seed": 42,
     "n_lines": 150,

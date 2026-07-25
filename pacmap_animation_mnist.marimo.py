@@ -101,7 +101,7 @@ def _(mo):
 def _(X, pacmap, time):
     N_NEIGHBORS = 10
     MN_RATIO = 0.5
-    FP_RATIO = 0.2
+    FP_RATIO = 2.0
 
     NUM_ITERS = (100, 100, 250)      # PaCMAP's three phases
     TOTAL     = sum(NUM_ITERS)       # 450
