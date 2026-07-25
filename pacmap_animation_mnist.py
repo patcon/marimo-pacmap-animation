@@ -58,7 +58,7 @@ def _(mo):
 
 @app.cell
 def _(np):
-    N = None # All ~70_000
+    N = 5000 # All ~70_000
 
     try:
         from tensorflow.keras.datasets import mnist

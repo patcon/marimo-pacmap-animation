@@ -1,0 +1,27 @@
+# PaCMAP / LocalMAP MNIST Animation
+
+[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/patcon/marimo-pacmap-animation/blob/main/pacmap_animation_mnist.py)
+
+A [marimo](https://marimo.io) notebook that animates [PaCMAP](https://github.com/YingfanWang/PaCMAP) and LocalMAP optimizing a 2D embedding of MNIST, frame by frame.
+
+It captures the embedding at **every** iteration via the public `intermediate_snapshots` kwarg (no fork or monkey-patch needed) and renders a video showing:
+
+- the three PaCMAP optimization phases (neighbor / mid-near / further pairs)
+- the pair-weight schedule that drives them, with `w_MN` collapsing from 1000 → 3 → 0 as global structure gets pulled into place and then refined locally
+- a smoothed, monotonic camera zoom to keep the ~30x expansion of the embedding legible
+- a side-by-side comparison of PaCMAP vs. LocalMAP from the same initialization
+
+## Running
+
+The notebook declares its dependencies inline (PEP 723), so it can be run directly with [uv](https://github.com/astral-sh/uv):
+
+```bash
+uvx marimo edit --sandbox pacmap_animation_mnist.py
+```
+
+MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetch_openml`.
+
+## Files
+
+- `pacmap_animation_mnist.py` — the marimo notebook
+- `pacmap_animation_mnist.ipynb` — the original Jupyter notebook this was converted from
