@@ -24,8 +24,13 @@ MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetc
 There's also a plain CLI script for rendering a video without the notebook UI:
 
 ```bash
-uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/
+uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000
 ```
+
+Renders land in `outputs/` by default (gitignored) and never overwrite an existing
+file — a repeat run gets `pacmap_mnist_1.mp4`, `pacmap_mnist_2.mp4`, etc. Pass
+`--output-dir myrun` to nest under `outputs/myrun` instead, or `--output-dir ./out`
+(or an absolute path) to use that directory as-is.
 
 Flags: `--n`, `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`,
 `--fp-ratio`, `--num-iters`, `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`,

@@ -189,6 +189,21 @@ def render_animation(
 # Orchestration
 # ---------------------------------------------------------------------------
 
+def unique_path(path):
+    """Return `path` if it doesn't exist, otherwise `path` with an incrementing
+    number appended before the suffix (e.g. foo.mp4 -> foo_1.mp4 -> foo_2.mp4),
+    so renders never clobber an existing file."""
+    path = Path(path)
+    if not path.exists():
+        return path
+    n = 1
+    while True:
+        candidate = path.with_name(f"{path.stem}_{n}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
+
 def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
     trace, pair_neighbors, pair_MN, pair_FP = fit_trace(
         X,
@@ -201,7 +216,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
     )
     W = weight_schedule(cfg["num_iters"])
     r_s = camera_path(trace)
-    out_path = Path(output_dir) / f"{algorithm}_mnist.mp4"
+    out_path = unique_path(Path(output_dir) / f"{algorithm}_mnist.mp4")
     return render_animation(
         trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], r_s, rs,
         out_path=str(out_path),
@@ -223,8 +238,20 @@ DEFAULT_CONFIG = {
     "n_lines": 150,
     "step": 3,
     "fps": 25,
-    "output_dir": ".",
+    "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
+
+
+def resolve_output_dir(output_dir):
+    """"" -> outputs/. An absolute path, or one starting with "./" or "../",
+    is used as-is. Any other relative path is nested under outputs/, e.g.
+    "myrun" -> outputs/myrun."""
+    if not output_dir:
+        return Path("outputs")
+    p = Path(output_dir)
+    if p.is_absolute() or str(output_dir).startswith(("./", "../")):
+        return p
+    return Path("outputs") / p
 
 
 def load_config(config_path):
@@ -261,7 +288,9 @@ def parse_args(argv=None):
     p.add_argument("--fps", type=int, default=None,
                     help=f"(default: {d['fps']})")
     p.add_argument("--output-dir", type=str, default=None,
-                    help=f"(default: {d['output_dir']!r})")
+                    help="output directory (default: outputs/). An absolute path, or one "
+                         "starting with ./ or ../, is used as-is; any other relative path "
+                         "is nested under outputs/, e.g. 'myrun' -> outputs/myrun")
     return p.parse_args(argv)
 
 
@@ -290,12 +319,13 @@ def main(argv=None):
     args = parse_args(argv)
     cfg = build_config(args)
 
-    Path(cfg["output_dir"]).mkdir(parents=True, exist_ok=True)
+    output_dir = resolve_output_dir(cfg["output_dir"])
+    output_dir.mkdir(parents=True, exist_ok=True)
     X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
 
     algorithms = ["pacmap", "localmap"] if cfg["algorithm"] == "both" else [cfg["algorithm"]]
     for algorithm in algorithms:
-        run_algorithm(X, y, rs, algorithm, cfg, cfg["output_dir"])
+        run_algorithm(X, y, rs, algorithm, cfg, output_dir)
 
 
 if __name__ == "__main__":

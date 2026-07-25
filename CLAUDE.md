@@ -23,10 +23,12 @@ Both scripts declare dependencies inline (PEP 723) and run via `uv`/`uvx` withou
 uvx marimo edit --sandbox pacmap_animation_mnist.marimo.py
 
 # Headless CLI render
-uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/
+uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000
 ```
 
 CLI flags: `--n` (subsample size, or `all` for the full ~70,000 points), `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`, `--fp-ratio`, `--num-iters` (comma-separated PaCMAP phase lengths), `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`, and `--config path/to/config.json` for file-based overrides (CLI flags win over the config file; unset config fields fall back to `DEFAULT_CONFIG` in `pacmap_animation_mnist.cli.py`).
+
+Renders default to `outputs/` (gitignored) via `resolve_output_dir()` in the CLI script: a relative `--output-dir` value with no `./`/`../` prefix is nested under `outputs/` (e.g. `myrun` → `outputs/myrun`); an absolute path or one starting with `./`/`../` is used as-is. `unique_path()` ensures a render never overwrites an existing file, appending `_1`, `_2`, etc. instead. This output-path logic lives only in the CLI script, not the marimo notebook.
 
 MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetch_openml` (pinned to the `liac-arff` parser to avoid a hidden pandas dependency).
 

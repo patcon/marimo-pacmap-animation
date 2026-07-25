@@ -1,3 +1,4 @@
 .claude/
 .agents/
 __pycache__/
+outputs/
