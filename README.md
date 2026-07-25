@@ -32,11 +32,17 @@ file — a repeat run gets `pacmap_mnist_1.mp4`, `pacmap_mnist_2.mp4`, etc. Pass
 `--output-dir myrun` to nest under `outputs/myrun` instead, or `--output-dir ./out`
 (or an absolute path) to use that directory as-is.
 
+Add `--tag-output` to nest the render under a subdirectory named after whichever
+params you changed from the defaults (e.g. `outputs/nn5_mnr0.8/`), so a directory
+listing doubles as a quick way to compare runs by parameter. `--algorithm` isn't
+part of the tag, so a `both` run and separate `pacmap`/`localmap` runs with the
+same other params land in the same tagged folder.
+
 Flags: `--n`, `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`,
 `--fp-ratio`, `--num-iters`, `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`,
-and `--config path/to/config.json` for file-based overrides (CLI flags win over the
-config file). Its functions are factored so they can be imported directly into a
-notebook rather than only invoked from the CLI.
+`--tag-output`, and `--config path/to/config.json` for file-based overrides (CLI
+flags win over the config file). Its functions are factored so they can be
+imported directly into a notebook rather than only invoked from the CLI.
 
 ## Files
 

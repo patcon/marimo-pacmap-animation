@@ -254,6 +254,42 @@ def resolve_output_dir(output_dir):
     return Path("outputs") / p
 
 
+# Params worth encoding in a --tag-output slug, in display order. "algorithm"
+# and "output_dir" are deliberately excluded: they don't affect the fit/render
+# in a way you'd want to distinguish runs by in a shared comparison folder.
+TAG_PARAMS = [
+    ("n", "n"),
+    ("n_neighbors", "nn"),
+    ("mn_ratio", "mnr"),
+    ("fp_ratio", "fpr"),
+    ("num_iters", "iters"),
+    ("seed", "seed"),
+    ("n_lines", "nlines"),
+    ("step", "step"),
+    ("fps", "fps"),
+]
+
+
+def param_tag(cfg):
+    """Slug of the params in `cfg` that differ from DEFAULT_CONFIG, e.g.
+    "nn5_mnr0.8". Falls back to "default" if nothing differs."""
+    parts = []
+    for key, abbr in TAG_PARAMS:
+        val, default = cfg[key], DEFAULT_CONFIG[key]
+        if key == "num_iters":
+            val, default = tuple(val), tuple(default)
+        if val == default:
+            continue
+        if key == "n":
+            val_str = "all" if val is None else str(val)
+        elif key == "num_iters":
+            val_str = "-".join(map(str, val))
+        else:
+            val_str = str(val)
+        parts.append(f"{abbr}{val_str}")
+    return "_".join(parts) if parts else "default"
+
+
 def load_config(config_path):
     cfg = dict(DEFAULT_CONFIG)
     if config_path:
@@ -291,6 +327,10 @@ def parse_args(argv=None):
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
                          "is nested under outputs/, e.g. 'myrun' -> outputs/myrun")
+    p.add_argument("--tag-output", action="store_true",
+                    help="nest the render under a subdirectory named after the "
+                         "non-default params (e.g. outputs/nn5_mnr0.8/), so runs "
+                         "with different settings are easy to tell apart at a glance")
     return p.parse_args(argv)
 
 
@@ -320,6 +360,8 @@ def main(argv=None):
     cfg = build_config(args)
 
     output_dir = resolve_output_dir(cfg["output_dir"])
+    if args.tag_output:
+        output_dir = output_dir / param_tag(cfg)
     output_dir.mkdir(parents=True, exist_ok=True)
     X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
 
