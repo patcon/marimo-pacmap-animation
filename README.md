@@ -21,7 +21,20 @@ uvx marimo edit --sandbox pacmap_animation_mnist.py
 
 MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetch_openml`.
 
+There's also a plain CLI script for rendering a video without the notebook UI:
+
+```bash
+uv run pacmap_animation.py --algorithm both --n 5000 --output-dir out/
+```
+
+Flags: `--n`, `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`,
+`--fp-ratio`, `--num-iters`, `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`,
+and `--config path/to/config.json` for file-based overrides (CLI flags win over the
+config file). Its functions are factored so they can be imported directly into a
+notebook rather than only invoked from the CLI.
+
 ## Files
 
 - `pacmap_animation_mnist.py` — the marimo notebook
+- `pacmap_animation.py` — CLI script / importable functions for headless rendering
 - `pacmap_animation_mnist.ipynb` — the original Jupyter notebook this was converted from
