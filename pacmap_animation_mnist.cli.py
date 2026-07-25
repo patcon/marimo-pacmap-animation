@@ -116,6 +116,45 @@ def subsample_pairs(pairs, m, rs):
     return pairs[rs.choice(len(pairs), min(m, len(pairs)), replace=False)]
 
 
+# Per-type opacity ceilings used by the "v2" edge-style preset (see
+# compute_edge_alphas). Tuned so each pair type can reach a comparable peak
+# visibility instead of mid-near's raw weight (up to 1000) drowning out
+# neighbour (2-3) and further (always 1).
+EDGE_ALPHA_MAX_V2 = {"nb": 0.5, "mn": 0.6, "fp": 0.45}
+
+
+def compute_edge_alphas(w_NB, w_MN, w_FP, preset="v1", gamma=0.2):
+    """Per-frame LineCollection alpha for (neighbour, mid-near, further).
+
+    "v1" is the original mapping: each type's alpha is a fixed function of
+    its own raw weight, independent of the others. Because w_MN ranges from
+    1000 down to 0 while w_NB and w_FP barely move (2-3 and 1 respectively),
+    mid-near dominates visually for most of phase 1 and further pairs (fixed
+    weight of 1) never rise above alpha 0.05 - effectively invisible.
+
+    "v2" normalizes the three weights against their per-frame max (the
+    "combined force" for that frame) and applies a gamma < 1 to compress the
+    resulting ratio, so a type that is orders of magnitude weaker than the
+    frame's dominant force still gets a visible (if faint) share instead of
+    being crushed to ~0. Each type is then scaled by its own opacity ceiling
+    so mid-near can still read as the strongest without hiding the others.
+    """
+    if preset == "v1":
+        a_nb = 0.10 * w_NB / 3
+        a_mn = 0.55 * w_MN / (w_MN + 3)
+        a_fp = 0.05 * w_FP
+        return a_nb, a_mn, a_fp
+
+    w_max = max(w_NB, w_MN, w_FP, 1e-9)
+    r_nb = (w_NB / w_max) ** gamma
+    r_mn = (w_MN / w_max) ** gamma
+    r_fp = (w_FP / w_max) ** gamma
+    a_nb = EDGE_ALPHA_MAX_V2["nb"] * r_nb
+    a_mn = EDGE_ALPHA_MAX_V2["mn"] * r_mn
+    a_fp = EDGE_ALPHA_MAX_V2["fp"] * r_fp
+    return a_nb, a_mn, a_fp
+
+
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
@@ -124,6 +163,7 @@ def render_animation(
     trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
+    edge_style_preset="v1", edge_gamma=0.2,
 ):
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
@@ -175,10 +215,11 @@ def render_animation(
     def update(f):
         Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
+        a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
         scat.set_offsets(Y)
-        lc_nb.set_segments(seg(Y, PN)); lc_nb.set_alpha(0.10 * w_NB / 3)
-        lc_mn.set_segments(seg(Y, PM)); lc_mn.set_alpha(0.55 * w_MN / (w_MN + 3))
-        lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(0.05 * w_FP)
+        lc_nb.set_segments(seg(Y, PN)); lc_nb.set_alpha(a_nb)
+        lc_mn.set_segments(seg(Y, PM)); lc_mn.set_alpha(a_mn)
+        lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(a_fp)
         L = r_s[f]; ax.set_xlim(-L, L); ax.set_ylim(-L, L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.set_text(f"{title_prefix}iter %3d/%d   phase %d   w_MN=%7.1f  w_NB=%.0f" % (f, total, ph, w_MN, w_NB))
@@ -249,6 +290,8 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         title_prefix=f"{algorithm} " if algorithm == "localmap" else "",
         point_size=cfg["point_size"],
         point_alpha=cfg["point_alpha"],
+        edge_style_preset=cfg["edge_style_preset"],
+        edge_gamma=cfg["edge_gamma"],
     )
 
 
@@ -265,6 +308,8 @@ DEFAULT_CONFIG = {
     "fps": 25,
     "point_size": 5,
     "point_alpha": 1.0,
+    "edge_style_preset": "v1",  # "v1" (raw per-type weight) or "v2" (normalized/gamma-compressed)
+    "edge_gamma": 0.2,         # v2 only: compression exponent for weight ratios
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
@@ -297,6 +342,8 @@ TAG_PARAMS = [
     ("fps", "fps"),
     ("point_size", "psize"),
     ("point_alpha", "palpha"),
+    ("edge_style_preset", "edge"),
+    ("edge_gamma", "gamma"),
     ("fixed_camera", "camfixed"),
 ]
 
@@ -358,6 +405,16 @@ def parse_args(argv=None):
                     help=f"scatter marker size; lower to see density through overlap (default: {d['point_size']})")
     p.add_argument("--point-alpha", type=float, default=None,
                     help=f"scatter marker opacity 0-1; lower so overlapping points blend into visibly denser regions (default: {d['point_alpha']})")
+    p.add_argument("--edge-style-preset", choices=["v1", "v2"], default=None,
+                    help="'v1': each pair type's line alpha is a fixed function of its own "
+                         "raw weight (default) - mid-near's weight of up to 1000 dominates "
+                         "and further pairs (fixed weight 1) are nearly invisible. "
+                         "'v2': normalizes each frame's weights against their max and applies "
+                         "--edge-gamma compression, so weaker pair types stay visible "
+                         f"(default: {d['edge_style_preset']})")
+    p.add_argument("--edge-gamma", type=float, default=None,
+                    help="v2 edge-style-preset only: exponent compressing per-frame weight "
+                         f"ratios before mapping to alpha; lower = weaker types more visible (default: {d['edge_gamma']})")
     p.add_argument("--fixed-camera", action="store_true", default=None,
                     help="lock a single camera radius sized to the trace's largest extent "
                          "instead of the default smoothed zoom-out, so you can see the true "
@@ -389,6 +446,8 @@ def build_config(args):
         "fps": args.fps,
         "point_size": args.point_size,
         "point_alpha": args.point_alpha,
+        "edge_style_preset": args.edge_style_preset,
+        "edge_gamma": args.edge_gamma,
         "fixed_camera": args.fixed_camera,
         "output_dir": args.output_dir,
     }
