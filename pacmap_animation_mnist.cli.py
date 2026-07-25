@@ -192,11 +192,14 @@ def render_animation(
 # ---------------------------------------------------------------------------
 
 def unique_path(path):
-    """Return `path` if it doesn't exist, otherwise `path` with an incrementing
-    number appended before the suffix (e.g. foo.mp4 -> foo_1.mp4 -> foo_2.mp4),
-    so renders never clobber an existing file."""
+    """Return `path` if it doesn't exist. Otherwise ask whether to overwrite it;
+    if not, return `path` with an incrementing number appended before the
+    suffix (e.g. foo.mp4 -> foo_1.mp4 -> foo_2.mp4) instead."""
     path = Path(path)
     if not path.exists():
+        return path
+    reply = input(f"{path} already exists. Overwrite? [y/N] ").strip().lower()
+    if reply == "y":
         return path
     n = 1
     while True:
