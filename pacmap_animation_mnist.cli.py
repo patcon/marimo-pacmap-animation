@@ -185,9 +185,22 @@ def render_animation(
         vline.set_xdata([f, f])
         return ()
 
+    n_frames = len(frames)
+    print(f"Rendering {n_frames} frames ({len(trace)} captured iterations, step={step}) to {out_path}...")
     t0 = time.time()
+    report_every = max(1, n_frames // 20)  # ~20 progress lines regardless of frame count
+
+    def progress(current, total):
+        if current % report_every != 0 and current != total - 1:
+            return
+        elapsed = time.time() - t0
+        rate = (current + 1) / elapsed if elapsed > 0 else 0
+        eta = (total - current - 1) / rate if rate > 0 else float("nan")
+        print(f"  frame {current + 1}/{total}  ({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
+
     anim = FuncAnimation(fig, update, frames=frames, interval=1000 // fps, blit=False)
-    anim.save(out_path, writer="ffmpeg", fps=fps, savefig_kwargs={"facecolor": BG})
+    anim.save(out_path, writer="ffmpeg", fps=fps, savefig_kwargs={"facecolor": BG},
+              progress_callback=progress)
     plt.close(fig)
     print("rendered %s in %.0fs" % (out_path, time.time() - t0))
     return out_path
