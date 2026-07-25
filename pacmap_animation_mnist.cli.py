@@ -9,7 +9,7 @@
 # ///
 """Render a PaCMAP / LocalMAP optimization animation on MNIST from the CLI.
 
-    uv run pacmap_animation.py --algorithm both --n 5000 --output-dir out/
+    uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/
 
 Functions here are factored so they can also be imported directly into a
 marimo notebook.
@@ -236,19 +236,32 @@ def load_config(config_path):
 
 
 def parse_args(argv=None):
+    d = DEFAULT_CONFIG
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--config", type=str, default=None, help="JSON config file; CLI flags override its values")
-    p.add_argument("--n", type=int, default=None, help="subsample size (omit for all ~70,000 points)")
-    p.add_argument("--algorithm", choices=["pacmap", "localmap", "both"], default=None)
-    p.add_argument("--n-neighbors", type=int, default=None)
-    p.add_argument("--mn-ratio", type=float, default=None)
-    p.add_argument("--fp-ratio", type=float, default=None)
-    p.add_argument("--num-iters", type=str, default=None, help="comma-separated, e.g. 100,100,250")
-    p.add_argument("--seed", type=int, default=None)
-    p.add_argument("--n-lines", type=int, default=None)
-    p.add_argument("--step", type=int, default=None)
-    p.add_argument("--fps", type=int, default=None)
-    p.add_argument("--output-dir", type=str, default=None)
+    p.add_argument("--config", type=str, default=None,
+                    help="JSON config file; CLI flags override its values. Unset fields fall back to the built-in defaults shown below")
+    p.add_argument("--n", type=int, default=None,
+                    help=f"subsample size, omit flag entirely for all ~70,000 points (default: {d['n']})")
+    p.add_argument("--algorithm", choices=["pacmap", "localmap", "both"], default=None,
+                    help=f"(default: {d['algorithm']})")
+    p.add_argument("--n-neighbors", type=int, default=None,
+                    help=f"(default: {d['n_neighbors']})")
+    p.add_argument("--mn-ratio", type=float, default=None,
+                    help=f"(default: {d['mn_ratio']})")
+    p.add_argument("--fp-ratio", type=float, default=None,
+                    help=f"(default: {d['fp_ratio']})")
+    p.add_argument("--num-iters", type=str, default=None,
+                    help=f"comma-separated PaCMAP phase lengths, e.g. 100,100,250 (default: {','.join(map(str, d['num_iters']))})")
+    p.add_argument("--seed", type=int, default=None,
+                    help=f"(default: {d['seed']})")
+    p.add_argument("--n-lines", type=int, default=None,
+                    help=f"pairs drawn per pair-type per frame (default: {d['n_lines']})")
+    p.add_argument("--step", type=int, default=None,
+                    help=f"render every Nth captured iteration (default: {d['step']})")
+    p.add_argument("--fps", type=int, default=None,
+                    help=f"(default: {d['fps']})")
+    p.add_argument("--output-dir", type=str, default=None,
+                    help=f"(default: {d['output_dir']!r})")
     return p.parse_args(argv)
 
 

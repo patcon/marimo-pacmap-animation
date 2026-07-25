@@ -1,6 +1,6 @@
 # PaCMAP / LocalMAP MNIST Animation
 
-[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/patcon/marimo-pacmap-animation/blob/main/pacmap_animation_mnist.py)
+[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/patcon/marimo-pacmap-animation/blob/main/pacmap_animation_mnist.marimo.py)
 
 A [marimo](https://marimo.io) notebook that animates [PaCMAP](https://github.com/YingfanWang/PaCMAP) and LocalMAP optimizing a 2D embedding of MNIST, frame by frame.
 
@@ -16,7 +16,7 @@ It captures the embedding at **every** iteration via the public `intermediate_sn
 The notebook declares its dependencies inline (PEP 723), so it can be run directly with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uvx marimo edit --sandbox pacmap_animation_mnist.py
+uvx marimo edit --sandbox pacmap_animation_mnist.marimo.py
 ```
 
 MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetch_openml`.
@@ -24,7 +24,7 @@ MNIST is loaded via `keras` if available, falling back to `sklearn.datasets.fetc
 There's also a plain CLI script for rendering a video without the notebook UI:
 
 ```bash
-uv run pacmap_animation.py --algorithm both --n 5000 --output-dir out/
+uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/
 ```
 
 Flags: `--n`, `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`,
@@ -35,6 +35,6 @@ notebook rather than only invoked from the CLI.
 
 ## Files
 
-- `pacmap_animation_mnist.py` — the marimo notebook
-- `pacmap_animation.py` — CLI script / importable functions for headless rendering
+- `pacmap_animation_mnist.marimo.py` — the marimo notebook
+- `pacmap_animation_mnist.cli.py` — CLI script / importable functions for headless rendering
 - `pacmap_animation_mnist.ipynb` — the original Jupyter notebook this was converted from
