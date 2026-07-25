@@ -97,9 +97,15 @@ def weight_schedule(num_iters):
     return W
 
 
-def camera_path(trace, smooth_window=15, headroom=1.15):
-    """Smoothed, monotonic zoom-out radius per frame."""
+def camera_path(trace, smooth_window=15, headroom=1.15, fixed=False):
+    """Per-frame camera radius. Smoothed, monotonic zoom-out by default so
+    early iterations stay legible; `fixed=True` instead locks a single radius
+    (sized to the trace's largest extent) for the whole animation, so you can
+    see the true scale of the movement even though early frames start as a
+    tiny dot."""
     r = np.percentile(np.abs(trace).reshape(len(trace), -1), 99.5, axis=1)
+    if fixed:
+        return np.full(len(trace), r.max() * headroom)
     k = smooth_window
     r_s = np.convolve(np.r_[np.full(k, r[0]), r], np.ones(k) / k, mode="valid")
     r_s = np.maximum.accumulate(r_s) * headroom
@@ -220,7 +226,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
         seed=cfg["seed"],
     )
     W = weight_schedule(cfg["num_iters"])
-    r_s = camera_path(trace)
+    r_s = camera_path(trace, fixed=cfg["fixed_camera"])
     out_path = unique_path(Path(output_dir) / f"{algorithm}_mnist.mp4")
     return render_animation(
         trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], r_s, rs,
@@ -247,6 +253,7 @@ DEFAULT_CONFIG = {
     "fps": 25,
     "point_size": 5,
     "point_alpha": 1.0,
+    "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -278,6 +285,7 @@ TAG_PARAMS = [
     ("fps", "fps"),
     ("point_size", "psize"),
     ("point_alpha", "palpha"),
+    ("fixed_camera", "camfixed"),
 ]
 
 
@@ -338,6 +346,10 @@ def parse_args(argv=None):
                     help=f"scatter marker size; lower to see density through overlap (default: {d['point_size']})")
     p.add_argument("--point-alpha", type=float, default=None,
                     help=f"scatter marker opacity 0-1; lower so overlapping points blend into visibly denser regions (default: {d['point_alpha']})")
+    p.add_argument("--fixed-camera", action="store_true", default=None,
+                    help="lock a single camera radius sized to the trace's largest extent "
+                         "instead of the default smoothed zoom-out, so you can see the true "
+                         "scale of movement (early frames start as a tiny dot)")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -365,6 +377,7 @@ def build_config(args):
         "fps": args.fps,
         "point_size": args.point_size,
         "point_alpha": args.point_alpha,
+        "fixed_camera": args.fixed_camera,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
