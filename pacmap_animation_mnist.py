@@ -69,7 +69,7 @@ def _(np):
     except Exception as e:
         print("keras unavailable (%s), falling back to openml" % type(e).__name__)
         from sklearn.datasets import fetch_openml
-        d = fetch_openml("mnist_784", version=1, as_frame=False)
+        d = fetch_openml("mnist_784", version=1, as_frame=False, parser="liac-arff")
         Xfull = d.data.astype(np.float32) / 255.0
         yfull = d.target.astype(int)
 
