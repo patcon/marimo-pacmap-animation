@@ -99,6 +99,10 @@ def _(mo):
 
 @app.cell
 def _(X, pacmap, time):
+    N_NEIGHBORS = 10
+    MN_RATIO = 0.5
+    FP_RATIO = 0.2
+
     NUM_ITERS = (100, 100, 250)      # PaCMAP's three phases
     TOTAL     = sum(NUM_ITERS)       # 450
 
@@ -107,7 +111,9 @@ def _(X, pacmap, time):
     t0_pacmap = time.time()
     reducer_pacmap = pacmap.PaCMAP(
         n_components=2,
-        n_neighbors=10,
+        n_neighbors=N_NEIGHBORS,
+        MN_ratio=MN_RATIO,
+        FP_ratio=FP_RATIO,
         num_iters=NUM_ITERS,
         intermediate=True,
         intermediate_snapshots=list(range(TOTAL + 1)),
@@ -120,17 +126,29 @@ def _(X, pacmap, time):
     pair_MN        = reducer_pacmap.pair_MN           # mid-near
     pair_FP        = reducer_pacmap.pair_FP           # further pairs
     print("PaCMAP pairs:", pair_neighbors.shape, pair_MN.shape, pair_FP.shape)
-    return NUM_ITERS, TOTAL, pair_FP, pair_MN, pair_neighbors, trace
+    return (
+        FP_RATIO,
+        MN_RATIO,
+        N_NEIGHBORS,
+        NUM_ITERS,
+        TOTAL,
+        pair_FP,
+        pair_MN,
+        pair_neighbors,
+        trace,
+    )
 
 
 @app.cell
-def _(NUM_ITERS, TOTAL, X, pacmap, time):
+def _(FP_RATIO, MN_RATIO, N_NEIGHBORS, NUM_ITERS, TOTAL, X, pacmap, time):
     # LocalMAP
     print("\nRunning LocalMAP...")
     t0_localmap = time.time()
     reducer_localmap = pacmap.LocalMAP(
         n_components=2,
-        n_neighbors=10,
+        n_neighbors=N_NEIGHBORS,
+        MN_ratio=MN_RATIO,
+        FP_ratio=FP_RATIO,
         num_iters=NUM_ITERS,
         intermediate=True,
         intermediate_snapshots=list(range(TOTAL + 1)),
@@ -432,8 +450,8 @@ def _(mo):
 
 
 @app.cell
-def _(NUM_ITERS, TOTAL, X, pacmap, plt, trace, y):
-    lm = pacmap.LocalMAP(n_components=2, n_neighbors=10, num_iters=NUM_ITERS, intermediate=True, intermediate_snapshots=list(range(TOTAL + 1)), random_state=42, verbose=False)
+def _(FP_RATIO, MN_RATIO, N_NEIGHBORS, NUM_ITERS, TOTAL, X, pacmap, plt, trace, y):
+    lm = pacmap.LocalMAP(n_components=2, n_neighbors=N_NEIGHBORS, MN_ratio=MN_RATIO, FP_ratio=FP_RATIO, num_iters=NUM_ITERS, intermediate=True, intermediate_snapshots=list(range(TOTAL + 1)), random_state=42, verbose=False)
     trace_lm_1 = lm.fit_transform(X)
     print(trace_lm_1.shape)
     (fig_1, axes) = plt.subplots(2, 4, figsize=(16, 8), facecolor='#0d0d10')
