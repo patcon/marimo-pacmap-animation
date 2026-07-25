@@ -240,8 +240,8 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", type=str, default=None,
                     help="JSON config file; CLI flags override its values. Unset fields fall back to the built-in defaults shown below")
-    p.add_argument("--n", type=int, default=None,
-                    help=f"subsample size, omit flag entirely for all ~70,000 points (default: {d['n']})")
+    p.add_argument("--n", type=str, default=None,
+                    help=f"subsample size, or 'all' for the full ~70,000 points (default: {d['n']})")
     p.add_argument("--algorithm", choices=["pacmap", "localmap", "both"], default=None,
                     help=f"(default: {d['algorithm']})")
     p.add_argument("--n-neighbors", type=int, default=None,
@@ -267,8 +267,9 @@ def parse_args(argv=None):
 
 def build_config(args):
     cfg = load_config(args.config)
+    if args.n is not None:
+        cfg["n"] = None if args.n.strip().lower() == "all" else int(args.n)
     overrides = {
-        "n": args.n,
         "algorithm": args.algorithm,
         "n_neighbors": args.n_neighbors,
         "mn_ratio": args.mn_ratio,
