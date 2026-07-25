@@ -117,6 +117,7 @@ def subsample_pairs(pairs, m, rs):
 def render_animation(
     trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    point_size=5, point_alpha=1.0,
 ):
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
@@ -145,7 +146,8 @@ def render_animation(
     lc_nb = LineCollection([], colors="#4da6ff", linewidths=0.7, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection(lc)
-    scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10", s=5, linewidths=0, zorder=4)
+    scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10",
+                       s=point_size, alpha=point_alpha, linewidths=0, zorder=4)
     title = ax.text(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
     ax.text(0.02, 0.03, "neighbour", transform=ax.transAxes, color="#4da6ff", fontsize=9)
     ax.text(0.16, 0.03, "mid-near", transform=ax.transAxes, color="#ffa53d", fontsize=9)
@@ -224,6 +226,8 @@ def run_algorithm(X, y, rs, algorithm, cfg, output_dir):
         step=cfg["step"],
         fps=cfg["fps"],
         title_prefix=f"{algorithm} " if algorithm == "localmap" else "",
+        point_size=cfg["point_size"],
+        point_alpha=cfg["point_alpha"],
     )
 
 
@@ -238,6 +242,8 @@ DEFAULT_CONFIG = {
     "n_lines": 150,
     "step": 3,
     "fps": 25,
+    "point_size": 5,
+    "point_alpha": 1.0,
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -267,6 +273,8 @@ TAG_PARAMS = [
     ("n_lines", "nlines"),
     ("step", "step"),
     ("fps", "fps"),
+    ("point_size", "psize"),
+    ("point_alpha", "palpha"),
 ]
 
 
@@ -323,6 +331,10 @@ def parse_args(argv=None):
                     help=f"render every Nth captured iteration (default: {d['step']})")
     p.add_argument("--fps", type=int, default=None,
                     help=f"(default: {d['fps']})")
+    p.add_argument("--point-size", type=float, default=None,
+                    help=f"scatter marker size; lower to see density through overlap (default: {d['point_size']})")
+    p.add_argument("--point-alpha", type=float, default=None,
+                    help=f"scatter marker opacity 0-1; lower so overlapping points blend into visibly denser regions (default: {d['point_alpha']})")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -348,6 +360,8 @@ def build_config(args):
         "n_lines": args.n_lines,
         "step": args.step,
         "fps": args.fps,
+        "point_size": args.point_size,
+        "point_alpha": args.point_alpha,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})

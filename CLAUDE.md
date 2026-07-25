@@ -26,7 +26,7 @@ uvx marimo edit --sandbox pacmap_animation_mnist.marimo.py
 uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000
 ```
 
-CLI flags: `--n` (subsample size, or `all` for the full ~70,000 points), `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`, `--fp-ratio`, `--num-iters` (comma-separated PaCMAP phase lengths), `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`, `--tag-output`, and `--config path/to/config.json` for file-based overrides (CLI flags win over the config file; unset config fields fall back to `DEFAULT_CONFIG` in `pacmap_animation_mnist.cli.py`).
+CLI flags: `--n` (subsample size, or `all` for the full ~70,000 points), `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`, `--fp-ratio`, `--num-iters` (comma-separated PaCMAP phase lengths), `--seed`, `--n-lines`, `--step`, `--fps`, `--point-size`, `--point-alpha`, `--output-dir`, `--tag-output`, and `--config path/to/config.json` for file-based overrides (CLI flags win over the config file; unset config fields fall back to `DEFAULT_CONFIG` in `pacmap_animation_mnist.cli.py`).
 
 Renders default to `outputs/` (gitignored) via `resolve_output_dir()` in the CLI script: a relative `--output-dir` value with no `./`/`../` prefix is nested under `outputs/` (e.g. `myrun` → `outputs/myrun`); an absolute path or one starting with `./`/`../` is used as-is. `--tag-output` additionally nests the render under a subdirectory named for whichever params differ from `DEFAULT_CONFIG` (via `param_tag()`/`TAG_PARAMS`), e.g. `outputs/nn5_mnr0.8/`, so a directory listing doubles as a way to compare runs by parameter; `algorithm` and `output_dir` are deliberately excluded from the tag so a `both` run and separate `pacmap`/`localmap` runs with the same other params land in the same folder. `unique_path()` ensures a render never overwrites an existing file, appending `_1`, `_2`, etc. instead. This output-path logic lives only in the CLI script, not the marimo notebook.
 
@@ -44,7 +44,7 @@ There is no test suite, linter, or build step configured in this repo.
 
 4. **LocalMAP caveat** — LocalMAP resamples its far-pair graph every 10 iterations after iteration 200, and only the final set survives on the fitted object. Positions are captured fine across all frames, but drawing its *evolving* far-pair graph would require a small monkey-patch of `pacmap.pacmap.localmap` to append `pair_FP.copy()` inside the resampling branch — not currently implemented.
 
-5. **Rendering** — `matplotlib.animation.FuncAnimation` draws a subsampled set of pairs (colored by type: neighbour/mid-near/further) with opacity driven by the live weight, plus a scatter of points colored by MNIST digit label and a small weight-schedule strip synced to the main frame. Output is written via the `ffmpeg` writer, so `ffmpeg` must be available on `PATH`.
+5. **Rendering** — `matplotlib.animation.FuncAnimation` draws a subsampled set of pairs (colored by type: neighbour/mid-near/further) with opacity driven by the live weight, plus a scatter of points colored by MNIST digit label and a small weight-schedule strip synced to the main frame. Output is written via the `ffmpeg` writer, so `ffmpeg` must be available on `PATH`. Scatter marker size/opacity are `--point-size`/`--point-alpha` (CLI only); lowering `--point-alpha` lets overlapping points blend into visibly denser regions instead of fully occluding each other.
 
 ## Skills
 

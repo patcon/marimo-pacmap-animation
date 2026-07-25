@@ -39,10 +39,15 @@ part of the tag, so a `both` run and separate `pacmap`/`localmap` runs with the
 same other params land in the same tagged folder.
 
 Flags: `--n`, `--algorithm {pacmap,localmap,both}`, `--n-neighbors`, `--mn-ratio`,
-`--fp-ratio`, `--num-iters`, `--seed`, `--n-lines`, `--step`, `--fps`, `--output-dir`,
-`--tag-output`, and `--config path/to/config.json` for file-based overrides (CLI
-flags win over the config file). Its functions are factored so they can be
-imported directly into a notebook rather than only invoked from the CLI.
+`--fp-ratio`, `--num-iters`, `--seed`, `--n-lines`, `--step`, `--fps`,
+`--point-size`, `--point-alpha`, `--output-dir`, `--tag-output`, and
+`--config path/to/config.json` for file-based overrides (CLI flags win over the
+config file). Its functions are factored so they can be imported directly into
+a notebook rather than only invoked from the CLI.
+
+Lower `--point-alpha` (e.g. `0.4`) and/or `--point-size` if you want the scatter
+to better reflect point density — overlapping points blend into visibly denser
+regions instead of fully occluding each other.
 
 ## Files
 
