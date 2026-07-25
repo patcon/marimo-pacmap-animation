@@ -328,7 +328,7 @@ DEFAULT_CONFIG = {
     "point_alpha": 1.0,
     "edge_style_preset": "v1",  # "v1" (raw per-type weight) or "v2" (normalized/gamma-compressed)
     "edge_gamma": 0.2,         # v2 only: compression exponent for weight ratios
-    "overlay_style_preset": "v1",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
+    "overlay_style_preset": "v2",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
