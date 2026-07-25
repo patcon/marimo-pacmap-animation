@@ -155,6 +155,22 @@ def compute_edge_alphas(w_NB, w_MN, w_FP, preset="v1", gamma=0.2):
     return a_nb, a_mn, a_fp
 
 
+def compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix="", preset="v1"):
+    """Title-block text for a frame. "v1" is the original single-line format,
+    with w_MN shown as a float (it's fractional during phase 1's ramp) and no
+    w_FP. "v2" rounds w_MN to an integer for readability and stacks all three
+    weights as separate, label-aligned lines so their digits fall in the same
+    column frame to frame - easier to see them move together at a glance."""
+    if preset == "v1":
+        return f"{title_prefix}iter %3d/%d   phase %d   w_MN=%7.1f  w_NB=%.0f" % (f, total, ph, w_MN, w_NB)
+    return (
+        "%siter %3d/%d   phase %d\n"
+        "w_MN %4d\n"
+        "w_NB %4d\n"
+        "w_FP %4d"
+    ) % (title_prefix, f, total, ph, round(w_MN), round(w_NB), round(w_FP))
+
+
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
@@ -164,6 +180,7 @@ def render_animation(
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
+    overlay_style_preset="v1",
 ):
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
@@ -222,7 +239,7 @@ def render_animation(
         lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(a_fp)
         L = r_s[f]; ax.set_xlim(-L, L); ax.set_ylim(-L, L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
-        title.set_text(f"{title_prefix}iter %3d/%d   phase %d   w_MN=%7.1f  w_NB=%.0f" % (f, total, ph, w_MN, w_NB))
+        title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
         vline.set_xdata([f, f])
         return ()
 
@@ -292,6 +309,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         point_alpha=cfg["point_alpha"],
         edge_style_preset=cfg["edge_style_preset"],
         edge_gamma=cfg["edge_gamma"],
+        overlay_style_preset=cfg["overlay_style_preset"],
     )
 
 
@@ -310,6 +328,7 @@ DEFAULT_CONFIG = {
     "point_alpha": 1.0,
     "edge_style_preset": "v1",  # "v1" (raw per-type weight) or "v2" (normalized/gamma-compressed)
     "edge_gamma": 0.2,         # v2 only: compression exponent for weight ratios
+    "overlay_style_preset": "v1",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }

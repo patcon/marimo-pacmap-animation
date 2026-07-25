@@ -48,6 +48,8 @@ There is no test suite, linter, or build step configured in this repo.
 
    Edge line opacity per pair type is computed by `compute_edge_alphas()` (CLI only), selected via `--edge-style-preset`. `"v1"` (default) maps each type's alpha from its own raw weight independently — since `w_MN` ranges up to 1000 while `w_NB` (2-3) and `w_FP` (fixed at 1) barely move, mid-near visually dominates phase 1 and further pairs stay near-invisible (alpha capped at 0.05). `"v2"` normalizes the three weights against their per-frame max and raises the ratio to `--edge-gamma` (default 0.2, i.e. strong compression) before scaling by a per-type ceiling (`EDGE_ALPHA_MAX_V2`), so neighbour/further pairs stay visibly present even while mid-near dominates the fit.
 
+   The top-left overlay text is computed by `compute_overlay_text()`, selected via `cfg["overlay_style_preset"]` — a `DEFAULT_CONFIG` field settable only through a `--config` JSON file, not a CLI flag. `"v1"` (default) is the original single line with `w_MN` shown as a float and no `w_FP`. `"v2"` rounds all three weights to integers and stacks them as separate label-aligned lines (`w_MN`/`w_NB`/`w_FP`), so their digits land in the same column frame to frame, making it easier to see the three move together.
+
 ## Skills
 
 This repo uses marimo-team skills (`add-molab-badge`, `jupyter-to-marimo`), installed under `.agents/skills/` and tracked in `skills-lock.json`.
