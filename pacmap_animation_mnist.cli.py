@@ -131,14 +131,37 @@ def subsample_pairs(pairs, m, rs):
     return pairs[rs.choice(len(pairs), min(m, len(pairs)), replace=False)]
 
 
-# Per-type opacity ceilings used by the "v2" edge-style preset (see
+def pair_dist(Y, pairs):
+    """Per-pair 1 + squared low-dim distance, matching the `d_ij` PaCMAP's
+    own gradient is computed from (see pacmap.pacmap.pacmap_grad)."""
+    y_ij = Y[pairs[:, 0]] - Y[pairs[:, 1]]
+    return 1.0 + (y_ij ** 2).sum(axis=1)
+
+
+# (offset, numerator) constants per pair type, copied from
+# pacmap.pacmap.pacmap_grad's gradient terms - these are intrinsic to PaCMAP's
+# loss shape, not something this project chooses.
+_FORCE_CONST = {"nb": (10.0, 20.0), "mn": (10000.0, 20000.0), "fp": (1.0, 2.0)}
+
+
+def pacmap_force(d, w, kind):
+    """Per-pair gradient magnitude (unsigned) for pair type `kind`, given its
+    weight `w` and its 1 + squared low-dim distance `d`. This is the actual
+    force PaCMAP applies to a pair right now - unlike the raw weight, it
+    saturates (nb/mn) or decays (fp) as a function of how far apart the pair
+    already is in the embedding."""
+    a, k = _FORCE_CONST[kind]
+    return w * k / (a + d) ** 2
+
+
+# Per-type opacity ceilings used by the "v2"/"v3" edge-style presets (see
 # compute_edge_alphas). Tuned so each pair type can reach a comparable peak
 # visibility instead of mid-near's raw weight (up to 1000) drowning out
 # neighbour (2-3) and further (always 1).
 EDGE_ALPHA_MAX_V2 = {"nb": 0.5, "mn": 0.6, "fp": 0.45}
 
 
-def compute_edge_alphas(w_NB, w_MN, w_FP, preset="v1", gamma=0.2):
+def compute_edge_alphas(w_NB, w_MN, w_FP, preset="v1", gamma=0.2, Y=None, pairs=None):
     """Per-frame LineCollection alpha for (neighbour, mid-near, further).
 
     "v1" is the original mapping: each type's alpha is a fixed function of
@@ -153,11 +176,30 @@ def compute_edge_alphas(w_NB, w_MN, w_FP, preset="v1", gamma=0.2):
     frame's dominant force still gets a visible (if faint) share instead of
     being crushed to ~0. Each type is then scaled by its own opacity ceiling
     so mid-near can still read as the strongest without hiding the others.
+
+    "v3" shades each *individual* drawn edge by its actual instantaneous
+    PaCMAP gradient magnitude (see pacmap_force) rather than just its type's
+    frame-level weight, so e.g. a further pair that has already been pushed
+    apart (and so is contributing ~0 repulsion right now) visibly fades,
+    while one still tangled up nearby stays bright. Requires `Y` (current
+    embedding) and `pairs` (a (PN, PM, PF) tuple of drawn pair-index arrays).
+    Returns one alpha array per pair type instead of a scalar.
     """
     if preset == "v1":
         a_nb = 0.10 * w_NB / 3
         a_mn = 0.55 * w_MN / (w_MN + 3)
         a_fp = 0.05 * w_FP
+        return a_nb, a_mn, a_fp
+
+    if preset == "v3":
+        PN, PM, PF = pairs
+        f_nb = pacmap_force(pair_dist(Y, PN), w_NB, "nb")
+        f_mn = pacmap_force(pair_dist(Y, PM), w_MN, "mn")
+        f_fp = pacmap_force(pair_dist(Y, PF), w_FP, "fp")
+        f_max = max(f_nb.max(initial=0.0), f_mn.max(initial=0.0), f_fp.max(initial=0.0), 1e-9)
+        a_nb = EDGE_ALPHA_MAX_V2["nb"] * np.clip(f_nb / f_max, 0.0, 1.0) ** gamma
+        a_mn = EDGE_ALPHA_MAX_V2["mn"] * np.clip(f_mn / f_max, 0.0, 1.0) ** gamma
+        a_fp = EDGE_ALPHA_MAX_V2["fp"] * np.clip(f_fp / f_max, 0.0, 1.0) ** gamma
         return a_nb, a_mn, a_fp
 
     w_max = max(w_NB, w_MN, w_FP, 1e-9)
@@ -201,6 +243,7 @@ def render_animation(
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
     from matplotlib.collections import LineCollection
+    from matplotlib.colors import to_rgba
 
     total = sum(num_iters)
     PN = subsample_pairs(pair_neighbors, n_lines, rs)
@@ -208,6 +251,7 @@ def render_animation(
     PF = subsample_pairs(pair_FP, n_lines, rs)
     frames = list(range(0, len(trace), step))
     BG = "#0d0d10"
+    NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
     fig = plt.figure(figsize=(7, 8), dpi=110)
     fig.patch.set_facecolor(BG)
@@ -220,17 +264,17 @@ def render_animation(
             s.set_visible(False)
     ax.set_xticks([])
     ax.set_yticks([])
-    lc_fp = LineCollection([], colors="#ff4d4d", linewidths=0.5, zorder=1)
-    lc_mn = LineCollection([], colors="#ffa53d", linewidths=0.7, zorder=2)
-    lc_nb = LineCollection([], colors="#4da6ff", linewidths=0.7, zorder=3)
+    lc_fp = LineCollection([], colors=FP_COLOR, linewidths=0.5, zorder=1)
+    lc_mn = LineCollection([], colors=MN_COLOR, linewidths=0.7, zorder=2)
+    lc_nb = LineCollection([], colors=NB_COLOR, linewidths=0.7, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection(lc)
     scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10",
                        s=point_size, alpha=point_alpha, linewidths=0, zorder=4)
     title = ax.text(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
-    ax.text(0.02, 0.03, "neighbour", transform=ax.transAxes, color="#4da6ff", fontsize=9)
-    ax.text(0.16, 0.03, "mid-near", transform=ax.transAxes, color="#ffa53d", fontsize=9)
-    ax.text(0.29, 0.03, "further", transform=ax.transAxes, color="#ff4d4d", fontsize=9)
+    ax.text(0.02, 0.03, "neighbour", transform=ax.transAxes, color=NB_COLOR, fontsize=9)
+    ax.text(0.16, 0.03, "mid-near", transform=ax.transAxes, color=MN_COLOR, fontsize=9)
+    ax.text(0.29, 0.03, "further", transform=ax.transAxes, color=FP_COLOR, fontsize=9)
     it = np.arange(total + 1)
     for j, c in enumerate(("#ffa53d", "#4da6ff", "#ff4d4d")):
         axw.plot(it, np.log10(W[:, j] + 1), color=c, lw=1.4)
@@ -245,14 +289,31 @@ def render_animation(
     def seg(Y, p):
         return np.stack([Y[p[:, 0]], Y[p[:, 1]]], axis=1)
 
+    def apply_alpha(lc, base_color, alpha):
+        """Apply a scalar or per-edge alpha to a LineCollection. Arrays are
+        baked into per-segment RGBA (via set_color) rather than passed to
+        set_alpha, since array support there is matplotlib-version-dependent."""
+        alpha = np.clip(np.asarray(alpha) * line_alpha, 0.0, 1.0)
+        if alpha.ndim == 0:
+            lc.set_alpha(float(alpha))
+        else:
+            rgba = np.tile(to_rgba(base_color), (len(alpha), 1))
+            rgba[:, 3] = alpha
+            lc.set_alpha(None)
+            lc.set_color(rgba)
+
     def update(f):
         Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
-        a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
+        if edge_style_preset == "v3":
+            a_nb, a_mn, a_fp = compute_edge_alphas(
+                w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
+        else:
+            a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
         scat.set_offsets(Y)
-        lc_nb.set_segments(seg(Y, PN)); lc_nb.set_alpha(min(1.0, a_nb * line_alpha))
-        lc_mn.set_segments(seg(Y, PM)); lc_mn.set_alpha(min(1.0, a_mn * line_alpha))
-        lc_fp.set_segments(seg(Y, PF)); lc_fp.set_alpha(min(1.0, a_fp * line_alpha))
+        lc_nb.set_segments(seg(Y, PN)); apply_alpha(lc_nb, NB_COLOR, a_nb)
+        lc_mn.set_segments(seg(Y, PM)); apply_alpha(lc_mn, MN_COLOR, a_mn)
+        lc_fp.set_segments(seg(Y, PF)); apply_alpha(lc_fp, FP_COLOR, a_fp)
         L = r_s[f]; ax.set_xlim(-L, L); ax.set_ylim(-L, L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
@@ -343,7 +404,7 @@ DEFAULT_CONFIG = {
     "fps": 25,
     "point_size": 5,
     "point_alpha": 1.0,
-    "edge_style_preset": "v1",  # "v1" (raw per-type weight) or "v2" (normalized/gamma-compressed)
+    "edge_style_preset": "v1",  # "v1" (raw per-type weight), "v2" (normalized/gamma-compressed), or "v3" (per-edge, distance-aware force)
     "edge_gamma": 0.2,         # v2 only: compression exponent for weight ratios
     "overlay_style_preset": "v2",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
@@ -453,16 +514,20 @@ def parse_args(argv=None):
                     help=f"scatter marker size; lower to see density through overlap (default: {d['point_size']})")
     p.add_argument("--point-alpha", type=float, default=None,
                     help=f"scatter marker opacity 0-1; lower so overlapping points blend into visibly denser regions (default: {d['point_alpha']})")
-    p.add_argument("--edge-style-preset", choices=["v1", "v2"], default=None,
+    p.add_argument("--edge-style-preset", choices=["v1", "v2", "v3"], default=None,
                     help="'v1': each pair type's line alpha is a fixed function of its own "
                          "raw weight (default) - mid-near's weight of up to 1000 dominates "
                          "and further pairs (fixed weight 1) are nearly invisible. "
                          "'v2': normalizes each frame's weights against their max and applies "
-                         "--edge-gamma compression, so weaker pair types stay visible "
-                         f"(default: {d['edge_style_preset']})")
+                         "--edge-gamma compression, so weaker pair types stay visible. "
+                         "'v3': shades each individual drawn edge by its actual instantaneous "
+                         "PaCMAP gradient magnitude (weight and current low-dim distance), so "
+                         "e.g. a further pair already pushed apart fades even while its type's "
+                         f"weight stays high (default: {d['edge_style_preset']})")
     p.add_argument("--edge-gamma", type=float, default=None,
-                    help="v2 edge-style-preset only: exponent compressing per-frame weight "
-                         f"ratios before mapping to alpha; lower = weaker types more visible (default: {d['edge_gamma']})")
+                    help="v2/v3 edge-style-preset only: exponent compressing per-frame (v2) or "
+                         "per-edge (v3) force ratios before mapping to alpha; lower = weaker "
+                         f"types/edges more visible (default: {d['edge_gamma']})")
     p.add_argument("--line-alpha", type=float, default=None,
                     help="multiplier applied to every edge line's alpha; turn down when "
                          f"--n-lines is high so overlapping lines don't wash out (default: {d['line_alpha']})")
