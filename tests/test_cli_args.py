@@ -64,7 +64,19 @@ def test_build_config_num_iters_parsed_as_tuple():
 def test_build_config_iter_range_parsed():
     args = cli.parse_args(["--iter", "50-300"])
     cfg = cli.build_config(args)
-    assert cfg["iter"] == (50, 300)
+    assert cfg["iter"] == [(50, 300)]
+
+
+def test_build_config_iter_single_value_parsed_as_single_item_list():
+    args = cli.parse_args(["--iter", "150"])
+    cfg = cli.build_config(args)
+    assert cfg["iter"] == [150]
+
+
+def test_build_config_iter_comma_separated_parsed_as_list_of_items():
+    args = cli.parse_args(["--iter", "50,150,250-400"])
+    cfg = cli.build_config(args)
+    assert cfg["iter"] == [50, 150, (250, 400)]
 
 
 def test_build_config_file_values_used_when_no_cli_override(tmp_path):

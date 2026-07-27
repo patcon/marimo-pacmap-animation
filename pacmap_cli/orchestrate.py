@@ -8,7 +8,10 @@ from .paths import param_tag, resolve_output_dir, unique_path
 from .render import render_animation, render_frame
 
 
-def run_algorithm(X, y, rs, algorithm, cfg, out_path):
+def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
+    """Fit once, then render one output per (iter_item, out_path) pair in
+    iter_out_paths - iter_item is None (full range), an int (single-iteration
+    png), or a (start, end) tuple (range mp4)."""
     trace, pair_neighbors, pair_MN, pair_FP = fit_trace(
         X,
         algorithm,
@@ -22,16 +25,9 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
     center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"])
 
     total = sum(cfg["num_iters"])
-    iter_cfg = cfg["iter"]
-    if iter_cfg is not None:
-        bounds = iter_cfg if isinstance(iter_cfg, tuple) else (iter_cfg, iter_cfg)
-        if not (0 <= bounds[0] <= bounds[1] <= total):
-            raise ValueError(f"--iter {iter_cfg} out of range: iterations run 0-{total}")
-
     common = dict(
         trace=trace, y=y, W=W, pair_neighbors=pair_neighbors, pair_MN=pair_MN, pair_FP=pair_FP,
         num_iters=cfg["num_iters"], center=center, r_s=r_s, rs=rs,
-        out_path=str(out_path),
         n_lines=cfg["n_lines"],
         title_prefix=f"{algorithm} " if algorithm == "localmap" else "",
         point_size=cfg["point_size"],
@@ -41,10 +37,21 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         overlay_style_preset=cfg["overlay_style_preset"],
         line_alpha=cfg["line_alpha"],
     )
-    if isinstance(iter_cfg, int):
-        return render_frame(**common, frame=iter_cfg)
-    start, end = iter_cfg if isinstance(iter_cfg, tuple) else (None, None)
-    return render_animation(**common, step=cfg["step"], fps=cfg["fps"], start=start, end=end)
+
+    results = []
+    for iter_item, out_path in iter_out_paths:
+        if iter_item is not None:
+            bounds = iter_item if isinstance(iter_item, tuple) else (iter_item, iter_item)
+            if not (0 <= bounds[0] <= bounds[1] <= total):
+                raise ValueError(f"--iter {iter_item} out of range: iterations run 0-{total}")
+        if isinstance(iter_item, int):
+            results.append(render_frame(**common, out_path=str(out_path), frame=iter_item))
+        else:
+            start, end = iter_item if isinstance(iter_item, tuple) else (None, None)
+            results.append(render_animation(
+                **common, out_path=str(out_path), step=cfg["step"], fps=cfg["fps"], start=start, end=end,
+            ))
+    return results
 
 
 def main(argv=None):
@@ -63,19 +70,29 @@ def main(argv=None):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     algorithms = ["pacmap", "localmap"] if cfg["algorithm"] == "both" else [cfg["algorithm"]]
-    # A single --iter value renders one still frame (png); None or a range
-    # renders the usual mp4. The suffix makes different --iter renders in
-    # the same directory distinguishable at a glance.
-    iter_cfg = cfg["iter"]
-    if iter_cfg is None:
-        suffix, ext = "", "mp4"
-    elif isinstance(iter_cfg, tuple):
-        suffix, ext = f"_iter{iter_cfg[0]}-{iter_cfg[1]}", "mp4"
-    else:
-        suffix, ext = f"_iter{iter_cfg}", "png"
+    # cfg["iter"] is None (full range -> one mp4) or a list of items, each an
+    # int (single-iteration png) or (start, end) tuple (range mp4); one output
+    # is rendered per item. The suffix makes different --iter renders in the
+    # same directory distinguishable at a glance.
+    iter_items = cfg["iter"] if cfg["iter"] is not None else [None]
+
+    def _suffix_ext(iter_item):
+        if iter_item is None:
+            return "", "mp4"
+        if isinstance(iter_item, tuple):
+            return f"_iter{iter_item[0]}-{iter_item[1]}", "mp4"
+        return f"_iter{iter_item}", "png"
+
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
-    out_paths = {a: unique_path(output_dir / f"{a}_mnist{suffix}.{ext}") for a in algorithms}
+    out_paths = {
+        a: [
+            (iter_item, unique_path(output_dir / f"{a}_mnist{suffix}.{ext}"))
+            for iter_item in iter_items
+            for suffix, ext in [_suffix_ext(iter_item)]
+        ]
+        for a in algorithms
+    }
 
     for algorithm in algorithms:
         run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm])

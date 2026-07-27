@@ -64,3 +64,24 @@ def test_main_renders_single_frame_png_for_iter(tmp_path, synthetic_mnist):
     out_file = out_dir / "pacmap_mnist_iter3.png"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
+
+
+def test_main_renders_multiple_outputs_for_comma_separated_iter(tmp_path, synthetic_mnist):
+    out_dir = tmp_path / "run"
+    argv = [
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-lines", "5",
+        "--iter", "3,5,2-4",
+        "--output-dir", str(out_dir),
+    ]
+    cli.main(argv)
+
+    png_3 = out_dir / "pacmap_mnist_iter3.png"
+    png_5 = out_dir / "pacmap_mnist_iter5.png"
+    mp4_2_4 = out_dir / "pacmap_mnist_iter2-4.mp4"
+    for out_file in (png_3, png_5, mp4_2_4):
+        assert out_file.exists()
+        assert out_file.stat().st_size > 0

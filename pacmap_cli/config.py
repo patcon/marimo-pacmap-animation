@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
-    "iter": None,              # None -> full-range video (default); int -> single-iteration png; (start, end) tuple -> range video
+    "iter": None,              # None -> full-range video (default); otherwise a list of items (int -> single-iteration png, (start, end) tuple -> range video), one output rendered per item
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -45,12 +45,19 @@ def parse_count_arg(value):
 
 
 def parse_iter_arg(value):
-    """Parse a --iter CLI value: "N" -> int N (single iteration -> png), or
+    """Parse a single --iter token: "N" -> int N (single iteration -> png), or
     "A-B" -> (int(A), int(B)) tuple (iteration range -> mp4)."""
     if "-" in value:
         start, end = value.split("-", 1)
         return (int(start), int(end))
     return int(value)
+
+
+def parse_iter_list(value):
+    """Parse a (possibly comma-separated) --iter CLI value into a list of
+    items, each produced by parse_iter_arg(), e.g. "50,150,250-400" ->
+    [50, 150, (250, 400)] - one png/mp4 fragment rendered per item."""
+    return [parse_iter_arg(token) for token in value.split(",")]
 
 
 def parse_args(argv=None):
@@ -115,7 +122,10 @@ def parse_args(argv=None):
                          "against pacmap's iteration count (0-sum(--num-iters)) rather than the "
                          "--step-derived animation frame. A single value (e.g. --iter 150) "
                          "renders one still frame as a png; a range (e.g. --iter 50-300) renders "
-                         "an mp4 spanning just those iterations, still subsampled by --step "
+                         "an mp4 spanning just those iterations, still subsampled by --step. "
+                         "Comma-separate multiple values/ranges (e.g. --iter 50,150,250-400) to "
+                         "render several outputs - one png/mp4 fragment per item, sharing a "
+                         "single fit/trace - in one invocation "
                          "(default: full 0-total range as an mp4)")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
@@ -149,7 +159,7 @@ def build_config(args):
         "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
         "focus_label": args.focus_label,
-        "iter": parse_iter_arg(args.iter) if args.iter is not None else None,
+        "iter": parse_iter_list(args.iter) if args.iter is not None else None,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
