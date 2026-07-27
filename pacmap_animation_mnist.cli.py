@@ -109,19 +109,33 @@ def weight_schedule(num_iters):
     return W
 
 
-def camera_path(trace, smooth_window=15, headroom=1.15, fixed=False):
-    """Per-frame camera radius. Smoothed, monotonic zoom-out by default so
-    early iterations stay legible; `fixed=True` instead locks a single radius
-    (sized to the trace's largest extent) for the whole animation, so you can
-    see the true scale of the movement even though early frames start as a
-    tiny dot."""
-    r = np.percentile(np.abs(trace).reshape(len(trace), -1), 99.5, axis=1)
-    if fixed:
-        return np.full(len(trace), r.max() * headroom)
+def camera_path(trace, y=None, focus_label=None, smooth_window=15, headroom=1.15, fixed=False):
+    """Per-frame camera (center, radius). Smoothed, monotonic zoom-out by
+    default so early iterations stay legible; `fixed=True` instead locks a
+    single radius (sized to the trace's largest extent) for the whole
+    animation, so you can see the true scale of the movement even though
+    early frames start as a tiny dot.
+
+    If `focus_label` is set, the camera instead tracks just the points
+    where `y == focus_label`: `center` is that subset's per-frame centroid
+    (smoothed, not monotonic - the cluster can legitimately drift back) and
+    `radius` is sized to its own extent from that centroid. When
+    `focus_label` is None, `center` is all zeros, matching the original
+    origin-centered behavior."""
+    pts = trace if focus_label is None else trace[:, y == focus_label, :]
+    center = pts.mean(axis=1)  # (T, 2)
+    r = np.percentile(np.abs(pts - center[:, None, :]).reshape(len(pts), -1), 99.5, axis=1)
     k = smooth_window
-    r_s = np.convolve(np.r_[np.full(k, r[0]), r], np.ones(k) / k, mode="valid")
-    r_s = np.maximum.accumulate(r_s) * headroom
-    return r_s
+    if fixed:
+        r_out = np.full(len(trace), r.max() * headroom)
+    else:
+        r_s = np.convolve(np.r_[np.full(k, r[0]), r], np.ones(k) / k, mode="valid")
+        r_out = np.maximum.accumulate(r_s) * headroom
+    if focus_label is None:
+        return np.zeros((len(trace), 2)), r_out
+    smooth = lambda col: np.convolve(np.r_[np.full(k, col[0]), col], np.ones(k) / k, mode="valid")
+    center_s = np.stack([smooth(center[:, 0]), smooth(center[:, 1])], axis=1)
+    return center_s, r_out
 
 
 def subsample_pairs(pairs, m, rs):
@@ -233,7 +247,7 @@ def compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix="", preset
 # ---------------------------------------------------------------------------
 
 def render_animation(
-    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, r_s, rs,
+    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
@@ -314,7 +328,8 @@ def render_animation(
         lc_nb.set_segments(seg(Y, PN)); apply_alpha(lc_nb, NB_COLOR, a_nb)
         lc_mn.set_segments(seg(Y, PM)); apply_alpha(lc_mn, MN_COLOR, a_mn)
         lc_fp.set_segments(seg(Y, PF)); apply_alpha(lc_fp, FP_COLOR, a_fp)
-        L = r_s[f]; ax.set_xlim(-L, L); ax.set_ylim(-L, L)
+        L = r_s[f]; cx, cy = center[f]
+        ax.set_xlim(cx - L, cx + L); ax.set_ylim(cy - L, cy + L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
         vline.set_xdata([f, f])
@@ -374,9 +389,9 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         seed=cfg["seed"],
     )
     W = weight_schedule(cfg["num_iters"])
-    r_s = camera_path(trace, fixed=cfg["fixed_camera"])
+    center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"])
     return render_animation(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], r_s, rs,
+        trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], center, r_s, rs,
         out_path=str(out_path),
         n_lines=cfg["n_lines"],
         step=cfg["step"],
@@ -409,6 +424,7 @@ DEFAULT_CONFIG = {
     "overlay_style_preset": "v2",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
+    "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -444,6 +460,7 @@ TAG_PARAMS = [
     ("edge_gamma", "gamma"),
     ("line_alpha", "linealpha"),
     ("fixed_camera", "camfixed"),
+    ("focus_label", "focus"),
 ]
 
 
@@ -535,6 +552,11 @@ def parse_args(argv=None):
                     help="lock a single camera radius sized to the trace's largest extent "
                          "instead of the default smoothed zoom-out, so you can see the true "
                          "scale of movement (early frames start as a tiny dot)")
+    p.add_argument("--focus-label", type=str, nargs="?", const="__prompt__", default=None,
+                    help="camera tracks just this MNIST digit's cluster instead of the whole "
+                         "embedding. Pass a digit (e.g. --focus-label 3), or pass the flag with "
+                         "no value to be prompted for one interactively after MNIST loads "
+                         f"(default: {d['focus_label']})")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -566,6 +588,7 @@ def build_config(args):
         "edge_gamma": args.edge_gamma,
         "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
+        "focus_label": args.focus_label,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
@@ -573,9 +596,36 @@ def build_config(args):
     return cfg
 
 
+def resolve_focus_label(focus_label, y):
+    """None passes through. "__prompt__" prompts interactively for one of
+    the labels actually present in `y`, reprompting on invalid input.
+    Otherwise parses `focus_label` as an int."""
+    if focus_label is None:
+        return None
+    if focus_label != "__prompt__":
+        return int(focus_label)
+    labels = sorted(set(y.tolist()))
+    while True:
+        reply = input(f"Focus on which label? {labels}: ").strip()
+        try:
+            choice = int(reply)
+        except ValueError:
+            print(f"Not a number: {reply!r}")
+            continue
+        if choice in labels:
+            return choice
+        print(f"{choice} not in {labels}")
+
+
 def main(argv=None):
     args = parse_args(argv)
     cfg = build_config(args)
+
+    # Loaded before output-path resolution (cheap) so --focus-label can be
+    # prompted against the real label set; the expensive step (fit_trace)
+    # still stays gated behind the overwrite-confirmation below.
+    X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
+    cfg["focus_label"] = resolve_focus_label(cfg["focus_label"], y)
 
     output_dir = resolve_output_dir(cfg["output_dir"])
     if args.tag_output:
@@ -586,8 +636,6 @@ def main(argv=None):
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
     out_paths = {a: unique_path(output_dir / f"{a}_mnist.mp4") for a in algorithms}
-
-    X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
 
     for algorithm in algorithms:
         run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm])
