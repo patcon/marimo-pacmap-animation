@@ -43,6 +43,23 @@ def test_build_config_cli_flag_overrides_default():
     assert cfg["mn_ratio"] == 0.8
 
 
+def test_build_config_n_components_defaults_to_2():
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["n_components"] == 2
+
+
+def test_build_config_n_components_cli_flag_overrides_default():
+    args = cli.parse_args(["--n-components", "3"])
+    cfg = cli.build_config(args)
+    assert cfg["n_components"] == 3
+
+
+def test_parse_args_n_components_rejects_invalid_choice():
+    with pytest.raises(SystemExit):
+        cli.parse_args(["--n-components", "4"])
+
+
 def test_build_config_zoom_defaults_to_1():
     args = cli.parse_args([])
     cfg = cli.build_config(args)

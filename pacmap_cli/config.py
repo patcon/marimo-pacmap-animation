@@ -7,6 +7,7 @@ import json
 DEFAULT_CONFIG = {
     "n": 5000,
     "algorithm": "both",       # "pacmap", "localmap", or "both"
+    "n_components": 2,        # 2 or 3; 3 renders via the 3D renderer
     "n_neighbors": 10,
     "mn_ratio": 0.5,
     "fp_ratio": 2.0,
@@ -71,6 +72,8 @@ def parse_args(argv=None):
                          f"~70,000 points, or 'all' for all of them (default: {d['n']})")
     p.add_argument("--algorithm", choices=["pacmap", "localmap", "both"], default=None,
                     help=f"(default: {d['algorithm']})")
+    p.add_argument("--n-components", type=int, choices=[2, 3], default=None,
+                    help=f"embedding dimensionality; 3 renders via the 3D renderer (default: {d['n_components']})")
     p.add_argument("--n-neighbors", type=int, default=None,
                     help=f"(default: {d['n_neighbors']})")
     p.add_argument("--mn-ratio", type=float, default=None,
@@ -149,6 +152,7 @@ def build_config(args):
         cfg["n"] = None if args.n.strip().lower() == "all" else parse_count_arg(args.n)
     overrides = {
         "algorithm": args.algorithm,
+        "n_components": args.n_components,
         "n_neighbors": args.n_neighbors,
         "mn_ratio": args.mn_ratio,
         "fp_ratio": args.fp_ratio,

@@ -20,6 +20,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         fp_ratio=cfg["fp_ratio"],
         num_iters=cfg["num_iters"],
         seed=cfg["seed"],
+        n_components=cfg["n_components"],
     )
     W = weight_schedule(cfg["num_iters"])
     center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"], zoom=cfg["zoom"])

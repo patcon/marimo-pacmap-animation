@@ -4,7 +4,7 @@ See `tasks/plan.md` for full detail, acceptance criteria, and open questions.
 
 ## Phase 1: Foundation
 - [x] Task 1: Thread `n_components` through `fit_trace()`; verify `camera_path()` generalizes to 3D (also fixed a pre-existing off-by-one in the camera smoothing convolution, found while testing 3D)
-- [ ] Task 2: Wire `--n-components` CLI flag and config plumbing
+- [x] Task 2: Wire `--n-components` CLI flag and config plumbing (rendering with n_components=3 still fails until Task 3's renderer dispatch lands - expected mid-slice state)
 
 ### Checkpoint: Foundation
 - [ ] `uv run pytest` passes
