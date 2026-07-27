@@ -71,3 +71,32 @@ def test_build_renderer_3d_v3_edge_preset_works():
         n_lines=10, edge_style_preset="v3",
     )
     update(1)  # should not raise
+
+
+def test_build_renderer_3d_camera_fixed_by_default():
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, draw_rs = _synthetic_inputs()
+
+    fig, update, total, BG = cli.render._build_renderer_3d(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, draw_rs,
+        n_lines=10,
+    )
+    ax = fig.axes[0]
+    update(0)
+    azim_f0 = ax.azim
+    update(total)
+    azim_fT = ax.azim
+    assert azim_f0 == azim_fT == -60
+
+
+def test_build_renderer_3d_rotate_sweeps_one_full_revolution():
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, draw_rs = _synthetic_inputs()
+
+    fig, update, total, BG = cli.render._build_renderer_3d(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, draw_rs,
+        n_lines=10, rotate=True,
+    )
+    ax = fig.axes[0]
+    update(0)
+    assert ax.azim == -60
+    update(total)
+    assert ax.azim == -60 + 360

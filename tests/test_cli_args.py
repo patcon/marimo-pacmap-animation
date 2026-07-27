@@ -60,6 +60,18 @@ def test_parse_args_n_components_rejects_invalid_choice():
         cli.parse_args(["--n-components", "4"])
 
 
+def test_build_config_rotate_defaults_to_false():
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["rotate"] is False
+
+
+def test_build_config_rotate_flag_sets_true():
+    args = cli.parse_args(["--rotate"])
+    cfg = cli.build_config(args)
+    assert cfg["rotate"] is True
+
+
 def test_build_config_zoom_defaults_to_1():
     args = cli.parse_args([])
     cfg = cli.build_config(args)

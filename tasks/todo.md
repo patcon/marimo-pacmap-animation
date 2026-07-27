@@ -25,7 +25,7 @@ See `tasks/plan.md` for full detail, acceptance criteria, and open questions.
 - [x] Human reviews scatter+edges PNG - approved (localmap render with v2 edge preset, far-pair edges tracking resample checkpoints correctly)
 
 ## Phase 4: Camera behavior
-- [ ] Task 5: fixed camera by default (`elev=20, azim=-60`); opt-in `--rotate` sweeps one full revolution over the animation
+- [x] Task 5: fixed camera by default (`elev=20, azim=-60`); opt-in `--rotate` sweeps one full revolution over the animation - visually confirmed frame 0 vs. frame 15 (halfway) show opposite viewing angles
 
 ## Phase 5: Naming + tests
 - [ ] Task 6: `_3d` filename marker (not `TAG_PARAMS`) so 2D/3D outputs never collide

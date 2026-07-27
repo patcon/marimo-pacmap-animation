@@ -24,6 +24,7 @@ DEFAULT_CONFIG = {
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "zoom": 1.0,               # >1 frames a smaller radius (closer/finer detail, cuts off edges); works with fixed_camera and focus_label alike
+    "rotate": False,           # n_components=3 only: True -> camera sweeps one full revolution over the animation instead of staying fixed
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
     "iter": None,              # None -> full-range video (default); otherwise a list of items (int -> single-iteration png, (start, end) tuple -> range video), one output rendered per item
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
@@ -120,6 +121,11 @@ def parse_args(argv=None):
                     help="camera zoom multiplier; >1 frames a smaller radius to see finer "
                          "detail at the cost of cutting off the edges of the embedding. "
                          f"Works alongside --fixed-camera and --focus-label alike (default: {d['zoom']})")
+    p.add_argument("--rotate", action="store_true", default=None,
+                    help="--n-components 3 only: sweep the camera through one full revolution "
+                         "over the course of the animation instead of a fixed viewing angle. "
+                         "Meaningless for a single-frame --iter render, which only shows the "
+                         f"angle at that one frame (default: {d['rotate']})")
     p.add_argument("--focus-label", type=str, nargs="?", const="__prompt__", default=None,
                     help="camera tracks just this MNIST digit's cluster instead of the whole "
                          "embedding. Pass a digit (e.g. --focus-label 3), or pass the flag with "
@@ -168,6 +174,7 @@ def build_config(args):
         "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
         "zoom": args.zoom,
+        "rotate": args.rotate,
         "focus_label": args.focus_label,
         "iter": parse_iter_list(args.iter) if args.iter is not None else None,
         "output_dir": args.output_dir,

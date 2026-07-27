@@ -124,15 +124,18 @@ def _build_renderer_3d(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    rotate=False,
 ):
     """3D counterpart to `_build_renderer()`: same pair-subsampling/edge-alpha
     logic and artist set, but built on `Axes3D` - 3D scatter via
     `_offsets3d` (no `set_offsets()` equivalent in 3D), `Line3DCollection`
     instead of `LineCollection`, and `zlim` alongside `xlim`/`ylim`, all
-    driven by the same `camera_path()` output. Static camera (`elev=20,
-    azim=-60`, matplotlib's own 3D defaults; rotation is a later feature).
-    Kept as a separate function rather than branching inside
-    `_build_renderer()`, since the 3D artist APIs don't overlap with 2D's."""
+    driven by the same `camera_path()` output. Camera is fixed at
+    `elev=20, azim=-60` (matplotlib's own 3D defaults) unless `rotate=True`,
+    in which case azimuth sweeps one full revolution (`-60` to `300`)
+    linearly over the animation's frame range. Kept as a separate function
+    rather than branching inside `_build_renderer()`, since the 3D artist
+    APIs don't overlap with 2D's."""
     import matplotlib.pyplot as plt
     from matplotlib.colors import to_rgba
     from mpl_toolkits.mplot3d.art3d import Line3DCollection
@@ -215,6 +218,8 @@ def _build_renderer_3d(
         lc_fp.set_segments(seg(Y, PF)); apply_alpha(lc_fp, FP_COLOR, a_fp)
         L = r_s[f]; cx, cy, cz = center[f]
         ax.set_xlim(cx - L, cx + L); ax.set_ylim(cy - L, cy + L); ax.set_zlim(cz - L, cz + L)
+        if rotate:
+            ax.view_init(elev=20, azim=-60 + 360 * f / total)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
         vline.set_xdata([f, f])
@@ -231,7 +236,7 @@ def render_animation(
     overlay_style_preset="v1",
     line_alpha=1.0,
     start=None, end=None,
-    n_components=2,
+    n_components=2, rotate=False,
 ):
     """Render trace indices `start`..`end` inclusive (default: the whole
     trace) as an mp4, stepping by `step`."""
@@ -239,12 +244,17 @@ def render_animation(
     from matplotlib.animation import FuncAnimation
 
     builder = _build_renderer_3d if n_components == 3 else _build_renderer
-    fig, update, total, BG = builder(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+    builder_kwargs = dict(
         n_lines=n_lines, title_prefix=title_prefix,
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
+    if n_components == 3:
+        builder_kwargs["rotate"] = rotate
+    fig, update, total, BG = builder(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+        **builder_kwargs,
     )
     start = 0 if start is None else start
     end = total if end is None else end
@@ -278,18 +288,27 @@ def render_frame(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
-    n_components=2,
+    n_components=2, rotate=False,
 ):
-    """Render a single trace index `frame` as a png."""
+    """Render a single trace index `frame` as a png. `rotate` (3D only) still
+    applies the angle that frame would have in a rotating animation, rather
+    than always the static default - a single still frame has no notion of
+    "over the animation" to sweep across, so this is the closest sensible
+    behavior rather than a special case."""
     import matplotlib.pyplot as plt
 
     builder = _build_renderer_3d if n_components == 3 else _build_renderer
-    fig, update, total, BG = builder(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+    builder_kwargs = dict(
         n_lines=n_lines, title_prefix=title_prefix,
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
+    if n_components == 3:
+        builder_kwargs["rotate"] = rotate
+    fig, update, total, BG = builder(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+        **builder_kwargs,
     )
     print(f"Rendering iteration {frame} of {total} to {out_path}...")
     t0 = time.time()

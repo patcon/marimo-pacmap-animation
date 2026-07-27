@@ -38,6 +38,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         overlay_style_preset=cfg["overlay_style_preset"],
         line_alpha=cfg["line_alpha"],
         n_components=cfg["n_components"],
+        rotate=cfg["rotate"],
     )
 
     results = []
