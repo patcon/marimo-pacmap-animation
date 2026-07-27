@@ -122,6 +122,26 @@ def test_main_renders_png_for_n_components_3(tmp_path, synthetic_mnist):
     assert out_file.stat().st_size > 0
 
 
+def test_main_renders_png_for_n_components_3_with_v3_edges(tmp_path, synthetic_mnist):
+    out_dir = tmp_path / "run"
+    argv = [
+        "--algorithm", "localmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-lines", "5",
+        "--n-components", "3",
+        "--edge-style-preset", "v3",
+        "--iter", "3",
+        "--output-dir", str(out_dir),
+    ]
+    cli.main(argv)
+
+    out_file = out_dir / "localmap_mnist_iter3.png"
+    assert out_file.exists()
+    assert out_file.stat().st_size > 0
+
+
 def test_fit_trace_n_components_3_produces_3_column_trace(synthetic_mnist):
     X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
     num_iters = (2, 2, 2)

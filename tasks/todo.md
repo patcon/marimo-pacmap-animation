@@ -19,10 +19,10 @@ See `tasks/plan.md` for full detail, acceptance criteria, and open questions.
 - [x] 2D output unaffected (regression check) - full suite green, 2D path untouched except new optional n_components kwarg
 
 ## Phase 3: Visual parity
-- [ ] Task 4: Add `Line3DCollection` edges (neighbour/mid-near/further) to 3D renderer
+- [x] Task 4: Add `Line3DCollection` edges (neighbour/mid-near/further) to 3D renderer
 
 ### Checkpoint: Full-parity single frame
-- [ ] Human reviews scatter+edges PNG
+- [x] Human reviews scatter+edges PNG - approved (localmap render with v2 edge preset, far-pair edges tracking resample checkpoints correctly)
 
 ## Phase 4: Camera behavior
 - [ ] Task 5: fixed camera by default (`elev=20, azim=-60`); opt-in `--rotate` sweeps one full revolution over the animation

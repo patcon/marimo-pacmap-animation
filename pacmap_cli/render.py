@@ -118,22 +118,39 @@ def _build_renderer(
 
 
 def _build_renderer_3d(
-    trace, y, W, num_iters, center, r_s,
-    title_prefix="",
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+    n_lines=150, title_prefix="",
     point_size=5, point_alpha=1.0,
+    edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
+    line_alpha=1.0,
 ):
-    """3D counterpart to `_build_renderer()`: scatter only (no edges yet -
-    see `pacmap_cli/render.py`'s `_build_renderer` for the full 2D artist
-    set), static camera (`elev=20, azim=-60`, matplotlib's own 3D
-    defaults). Kept as a separate function rather than branching inside
-    `_build_renderer()`, since 3D artists (`Axes3D`, `_offsets3d`, `zlim`)
-    don't share the 2D `Collection`/`set_offsets` API."""
+    """3D counterpart to `_build_renderer()`: same pair-subsampling/edge-alpha
+    logic and artist set, but built on `Axes3D` - 3D scatter via
+    `_offsets3d` (no `set_offsets()` equivalent in 3D), `Line3DCollection`
+    instead of `LineCollection`, and `zlim` alongside `xlim`/`ylim`, all
+    driven by the same `camera_path()` output. Static camera (`elev=20,
+    azim=-60`, matplotlib's own 3D defaults; rotation is a later feature).
+    Kept as a separate function rather than branching inside
+    `_build_renderer()`, since the 3D artist APIs don't overlap with 2D's."""
     import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
     total = sum(num_iters)
-    print(f"Drawing {len(trace[0])} nodes (3D, no edges yet)")
+    PN = subsample_pairs(pair_neighbors, n_lines, rs)
+    PM = subsample_pairs(pair_MN, n_lines, rs)
+    fp_idx = subsample_pairs_indices(pair_FP_history[0][1], n_lines, rs)
+    checkpoint_frames = np.array([f for f, _arr in pair_FP_history])
+    checkpoint_PF = [arr[fp_idx] for _f, arr in pair_FP_history]
+    counts = count_drawn(len(trace[0]), PN, PM, checkpoint_PF[0])
+    print(
+        f"Drawing {counts['nodes']} nodes and {counts['edges_total']} edges (3D) "
+        f"(neighbour={counts['edges_neighbor']}, mid-near={counts['edges_midnear']}, "
+        f"further={counts['edges_further']})"
+    )
     BG = "#0d0d10"
+    NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
     fig = plt.figure(figsize=(7, 8), dpi=110)
     fig.patch.set_facecolor(BG)
@@ -147,10 +164,18 @@ def _build_renderer_3d(
     for s in axw.spines.values():
         s.set_visible(False)
 
+    lc_fp = Line3DCollection([], colors=FP_COLOR, linewidths=0.5, zorder=1)
+    lc_mn = Line3DCollection([], colors=MN_COLOR, linewidths=0.7, zorder=2)
+    lc_nb = Line3DCollection([], colors=NB_COLOR, linewidths=0.7, zorder=3)
+    for lc in (lc_fp, lc_mn, lc_nb):
+        ax.add_collection3d(lc, autolim=False)
     Y0 = trace[0]
     scat = ax.scatter(Y0[:, 0], Y0[:, 1], Y0[:, 2], c=y, cmap="tab10",
-                       s=point_size, alpha=point_alpha, linewidths=0)
+                       s=point_size, alpha=point_alpha, linewidths=0, zorder=4)
     title = ax.text2D(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
+    ax.text2D(0.02, 0.03, "neighbour", transform=ax.transAxes, color=NB_COLOR, fontsize=9)
+    ax.text2D(0.16, 0.03, "mid-near", transform=ax.transAxes, color=MN_COLOR, fontsize=9)
+    ax.text2D(0.29, 0.03, "further", transform=ax.transAxes, color=FP_COLOR, fontsize=9)
     it = np.arange(total + 1)
     for j, c in enumerate(("#ffa53d", "#4da6ff", "#ff4d4d")):
         axw.plot(it, np.log10(W[:, j] + 1), color=c, lw=1.4)
@@ -162,10 +187,32 @@ def _build_renderer_3d(
     axw.tick_params(colors="#888", labelsize=7)
     axw.set_xlabel("iteration  (log weight)", color="#888", fontsize=8)
 
+    def seg(Y, p):
+        return np.stack([Y[p[:, 0]], Y[p[:, 1]]], axis=1)
+
+    def apply_alpha(lc, base_color, alpha):
+        alpha = np.clip(np.asarray(alpha) * line_alpha, 0.0, 1.0)
+        if alpha.ndim == 0:
+            lc.set_alpha(float(alpha))
+        else:
+            rgba = np.tile(to_rgba(base_color), (len(alpha), 1))
+            rgba[:, 3] = alpha
+            lc.set_alpha(None)
+            lc.set_color(rgba)
+
     def update(f):
         Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
+        PF = checkpoint_PF[checkpoint_index_for_frame(f, checkpoint_frames)]
+        if edge_style_preset == "v3":
+            a_nb, a_mn, a_fp = compute_edge_alphas(
+                w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
+        else:
+            a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
         scat._offsets3d = (Y[:, 0], Y[:, 1], Y[:, 2])
+        lc_nb.set_segments(seg(Y, PN)); apply_alpha(lc_nb, NB_COLOR, a_nb)
+        lc_mn.set_segments(seg(Y, PM)); apply_alpha(lc_mn, MN_COLOR, a_mn)
+        lc_fp.set_segments(seg(Y, PF)); apply_alpha(lc_fp, FP_COLOR, a_fp)
         L = r_s[f]; cx, cy, cz = center[f]
         ax.set_xlim(cx - L, cx + L); ax.set_ylim(cy - L, cy + L); ax.set_zlim(cz - L, cz + L)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
@@ -191,21 +238,14 @@ def render_animation(
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
-    if n_components == 3:
-        fig, update, total, BG = _build_renderer_3d(
-            trace, y, W, num_iters, center, r_s,
-            title_prefix=title_prefix,
-            point_size=point_size, point_alpha=point_alpha,
-            overlay_style_preset=overlay_style_preset,
-        )
-    else:
-        fig, update, total, BG = _build_renderer(
-            trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-            n_lines=n_lines, title_prefix=title_prefix,
-            point_size=point_size, point_alpha=point_alpha,
-            edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
-            overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-        )
+    builder = _build_renderer_3d if n_components == 3 else _build_renderer
+    fig, update, total, BG = builder(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+        n_lines=n_lines, title_prefix=title_prefix,
+        point_size=point_size, point_alpha=point_alpha,
+        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
     start = 0 if start is None else start
     end = total if end is None else end
     frames = list(range(start, end + 1, step))
@@ -243,21 +283,14 @@ def render_frame(
     """Render a single trace index `frame` as a png."""
     import matplotlib.pyplot as plt
 
-    if n_components == 3:
-        fig, update, total, BG = _build_renderer_3d(
-            trace, y, W, num_iters, center, r_s,
-            title_prefix=title_prefix,
-            point_size=point_size, point_alpha=point_alpha,
-            overlay_style_preset=overlay_style_preset,
-        )
-    else:
-        fig, update, total, BG = _build_renderer(
-            trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-            n_lines=n_lines, title_prefix=title_prefix,
-            point_size=point_size, point_alpha=point_alpha,
-            edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
-            overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-        )
+    builder = _build_renderer_3d if n_components == 3 else _build_renderer
+    fig, update, total, BG = builder(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+        n_lines=n_lines, title_prefix=title_prefix,
+        point_size=point_size, point_alpha=point_alpha,
+        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
     print(f"Rendering iteration {frame} of {total} to {out_path}...")
     t0 = time.time()
     update(frame)
