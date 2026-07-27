@@ -25,7 +25,10 @@ def synthetic_mnist(monkeypatch):
         y = rs.randint(0, 10, size=n_points)
         return X, y, rs
 
-    monkeypatch.setattr(cli, "load_mnist", fake_load_mnist)
+    # load_mnist is called as `load_mnist(...)` inside orchestrate.py, which
+    # resolves it as a global in orchestrate's own module namespace - not the
+    # entry shim's re-exported copy - so it must be patched there.
+    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
 
 
 def test_main_renders_mp4_for_pacmap(tmp_path, synthetic_mnist):
