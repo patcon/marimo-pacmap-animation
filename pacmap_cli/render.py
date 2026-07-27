@@ -6,7 +6,7 @@ import numpy as np
 
 from .fp_history import checkpoint_index_for_frame
 from .overlay import compute_overlay_text
-from .pairs import compute_edge_alphas, subsample_pairs, subsample_pairs_indices
+from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
 
 
 def _build_renderer(
@@ -36,6 +36,12 @@ def _build_renderer(
     fp_idx = subsample_pairs_indices(pair_FP_history[0][1], n_lines, rs)
     checkpoint_frames = np.array([f for f, _arr in pair_FP_history])
     checkpoint_PF = [arr[fp_idx] for _f, arr in pair_FP_history]
+    counts = count_drawn(len(trace[0]), PN, PM, checkpoint_PF[0])
+    print(
+        f"Drawing {counts['nodes']} nodes and {counts['edges_total']} edges "
+        f"(neighbour={counts['edges_neighbor']}, mid-near={counts['edges_midnear']}, "
+        f"further={counts['edges_further']})"
+    )
     BG = "#0d0d10"
     NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 

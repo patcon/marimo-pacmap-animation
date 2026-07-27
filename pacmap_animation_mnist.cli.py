@@ -37,6 +37,7 @@ from pacmap_cli.overlay import compute_overlay_text
 from pacmap_cli.pairs import (
     EDGE_ALPHA_MAX_V2,
     compute_edge_alphas,
+    count_drawn,
     pacmap_force,
     pair_dist,
     subsample_pairs,

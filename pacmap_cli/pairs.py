@@ -21,6 +21,22 @@ def subsample_pairs(pairs, m, rs):
     return pairs[subsample_pairs_indices(pairs, m, rs)]
 
 
+def count_drawn(n_points, PN, PM, PF):
+    """Node/edge counts for the pairs actually subsampled for rendering
+    (post `subsample_pairs`), so a run can report what it's about to draw
+    before spending time on the animation itself."""
+    edges_neighbor = len(PN)
+    edges_midnear = len(PM)
+    edges_further = len(PF)
+    return {
+        "nodes": n_points,
+        "edges_neighbor": edges_neighbor,
+        "edges_midnear": edges_midnear,
+        "edges_further": edges_further,
+        "edges_total": edges_neighbor + edges_midnear + edges_further,
+    }
+
+
 def pair_dist(Y, pairs):
     """Per-pair 1 + squared low-dim distance, matching the `d_ij` PaCMAP's
     own gradient is computed from (see pacmap.pacmap.pacmap_grad)."""

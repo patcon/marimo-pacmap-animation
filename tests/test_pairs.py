@@ -116,3 +116,41 @@ def test_pacmap_force_differs_by_pair_type_constants():
     f_mn = cli.pacmap_force(d, w=1.0, kind="mn")
     f_fp = cli.pacmap_force(d, w=1.0, kind="fp")
     assert len({round(float(f_nb[0]), 6), round(float(f_mn[0]), 6), round(float(f_fp[0]), 6)}) == 3
+
+
+def test_count_drawn_reports_node_count_as_given_point_count():
+    PN = np.arange(6).reshape(3, 2)
+    PM = np.arange(4).reshape(2, 2)
+    PF = np.arange(2).reshape(1, 2)
+    counts = cli.count_drawn(1000, PN, PM, PF)
+    assert counts["nodes"] == 1000
+
+
+def test_count_drawn_reports_edge_count_per_pair_type():
+    PN = np.arange(6).reshape(3, 2)
+    PM = np.arange(4).reshape(2, 2)
+    PF = np.arange(2).reshape(1, 2)
+    counts = cli.count_drawn(1000, PN, PM, PF)
+    assert counts["edges_neighbor"] == 3
+    assert counts["edges_midnear"] == 2
+    assert counts["edges_further"] == 1
+
+
+def test_count_drawn_reports_total_edges_as_sum_of_pair_types():
+    PN = np.arange(6).reshape(3, 2)
+    PM = np.arange(4).reshape(2, 2)
+    PF = np.arange(2).reshape(1, 2)
+    counts = cli.count_drawn(1000, PN, PM, PF)
+    assert counts["edges_total"] == 6
+
+
+def test_count_drawn_handles_empty_pair_types():
+    empty = np.empty((0, 2), dtype=int)
+    counts = cli.count_drawn(50, empty, empty, empty)
+    assert counts == {
+        "nodes": 50,
+        "edges_neighbor": 0,
+        "edges_midnear": 0,
+        "edges_further": 0,
+        "edges_total": 0,
+    }
