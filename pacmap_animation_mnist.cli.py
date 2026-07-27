@@ -28,11 +28,11 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 def resolve_proportion(value, total):
-    """If `value` is a float in (0, 1), treat it as a proportion of `total`
-    and round to an absolute count; otherwise return it unchanged. Shared by
-    --n (proportion of the full dataset) and --n-lines (proportion of a
-    pair type's available pool)."""
-    if isinstance(value, float) and 0 < value < 1:
+    """If `value` is a float in (0, 1], treat it as a proportion of `total`
+    and round to an absolute count (1.0 -> all of `total`); otherwise return
+    it unchanged. Shared by --n (proportion of the full dataset) and
+    --n-lines (proportion of a pair type's available pool)."""
+    if isinstance(value, float) and 0 < value <= 1:
         return round(value * total)
     return value
 
@@ -563,10 +563,10 @@ def load_config(config_path):
 
 def parse_count_arg(value):
     """Parse a --n/--n-lines CLI value: an absolute integer, or a fraction in
-    (0, 1) treated as a proportion of the relevant total at the point of use
-    (see resolve_proportion())."""
+    (0, 1] treated as a proportion of the relevant total at the point of use
+    (see resolve_proportion()); 1 or 1.0 means "all" (100%)."""
     v = float(value)
-    return v if 0 < v < 1 else int(v)
+    return v if 0 < v <= 1 else int(v)
 
 
 def parse_iter_arg(value):
