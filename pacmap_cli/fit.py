@@ -5,7 +5,7 @@ import time
 from .fp_history import capture_fp_history, fp_resample_iterations
 
 
-def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42):
+def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42, n_components=2):
     """Run PaCMAP or LocalMAP, capturing the embedding at every iteration.
 
     Returns `pair_FP_history`, a list of `(frame, pair_FP)` checkpoints
@@ -21,7 +21,7 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42)
     print(f"Running {algorithm}...")
     t0 = time.time()
     reducer = reducer_cls(
-        n_components=2,
+        n_components=n_components,
         n_neighbors=n_neighbors,
         MN_ratio=mn_ratio,
         FP_ratio=fp_ratio,
@@ -33,9 +33,9 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42)
     )
     if algorithm == "localmap":
         with capture_fp_history() as calls:
-            trace = reducer.fit_transform(X)  # (total+1, N, 2) float32
+            trace = reducer.fit_transform(X)  # (total+1, N, n_components) float32
     else:
-        trace = reducer.fit_transform(X)  # (total+1, N, 2) float32
+        trace = reducer.fit_transform(X)  # (total+1, N, n_components) float32
         calls = []
     print("%s fit %.1fs" % (algorithm, time.time() - t0), trace.shape, trace.nbytes / 1e6, "MB")
 

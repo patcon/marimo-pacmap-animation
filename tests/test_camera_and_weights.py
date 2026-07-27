@@ -3,11 +3,11 @@ import numpy as np
 from _loader import cli
 
 
-def _linear_trace(n_frames=20, n_points=30, seed=0):
+def _linear_trace(n_frames=20, n_points=30, seed=0, n_components=2):
     """A trace whose extent grows linearly, like a real PaCMAP run expanding
     over iterations."""
     rs = np.random.RandomState(seed)
-    base = rs.normal(size=(n_points, 2))
+    base = rs.normal(size=(n_points, n_components))
     scale = np.linspace(1.0, 30.0, n_frames)
     return np.stack([base * s for s in scale])
 
@@ -29,6 +29,20 @@ def test_camera_path_default_centers_on_origin():
     trace = _linear_trace()
     center, r = cli.camera_path(trace)
     assert np.allclose(center, 0.0)
+
+
+def test_camera_path_radius_length_matches_trace_length():
+    trace = _linear_trace()
+    _, r = cli.camera_path(trace)
+    assert r.shape == (len(trace),)
+
+
+def test_camera_path_focus_label_center_length_matches_trace_length():
+    trace = _linear_trace()
+    y = np.zeros(trace.shape[1], dtype=int)
+    y[:15] = 1
+    center, _ = cli.camera_path(trace, y=y, focus_label=1)
+    assert center.shape == (len(trace), 2)
 
 
 def test_camera_path_radius_is_monotonic_by_default():
@@ -102,3 +116,32 @@ def test_camera_path_zoom_applies_when_focus_label_set():
     _, r = cli.camera_path(trace, y=y, focus_label=1)
     _, r_zoomed = cli.camera_path(trace, y=y, focus_label=1, zoom=2.0)
     assert np.allclose(r_zoomed, r / 2.0)
+
+
+def test_camera_path_3d_center_and_radius_shapes():
+    trace = _linear_trace(n_components=3)
+    center, r = cli.camera_path(trace)
+    assert center.shape == (len(trace), 3)
+    assert r.shape == (len(trace),)
+
+
+def test_camera_path_3d_radius_is_monotonic_by_default():
+    trace = _linear_trace(n_components=3)
+    _, r = cli.camera_path(trace)
+    assert np.all(np.diff(r) >= 0)
+
+
+def test_camera_path_3d_fixed_radius_covers_largest_extent():
+    trace = _linear_trace(n_components=3)
+    _, r_zoom = cli.camera_path(trace, fixed=False)
+    _, r_fixed = cli.camera_path(trace, fixed=True)
+    assert r_fixed[0] >= r_zoom.max()
+
+
+def test_camera_path_3d_focus_label_center_has_3_columns():
+    trace = _linear_trace(n_components=3)
+    y = np.zeros(trace.shape[1], dtype=int)
+    y[:15] = 1
+    center, _ = cli.camera_path(trace, y=y, focus_label=1)
+    assert center.shape == (len(trace), 3)
+    assert not np.allclose(center, 0.0)

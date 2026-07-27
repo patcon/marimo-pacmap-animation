@@ -37,11 +37,16 @@ def camera_path(trace, y=None, focus_label=None, smooth_window=15, headroom=1.15
     if fixed:
         r_out = np.full(len(trace), r.max() * headroom)
     else:
-        r_s = np.convolve(np.r_[np.full(k, r[0]), r], np.ones(k) / k, mode="valid")
+        # Left-pad with k-1 (not k) copies of r[0] so the "valid" convolution
+        # output has exactly len(r) elements, matching the trace length -
+        # padding with k produced an off-by-one (len(r)+1) that went
+        # unnoticed since render.py never indexes the extra trailing value.
+        r_s = np.convolve(np.r_[np.full(k - 1, r[0]), r], np.ones(k) / k, mode="valid")
         r_out = np.maximum.accumulate(r_s) * headroom
     r_out = r_out / zoom
+    n_components = trace.shape[-1]
     if focus_label is None:
-        return np.zeros((len(trace), 2)), r_out
-    smooth = lambda col: np.convolve(np.r_[np.full(k, col[0]), col], np.ones(k) / k, mode="valid")
-    center_s = np.stack([smooth(center[:, 0]), smooth(center[:, 1])], axis=1)
+        return np.zeros((len(trace), n_components)), r_out
+    smooth = lambda col: np.convolve(np.r_[np.full(k - 1, col[0]), col], np.ones(k) / k, mode="valid")
+    center_s = np.stack([smooth(center[:, j]) for j in range(n_components)], axis=1)
     return center_s, r_out

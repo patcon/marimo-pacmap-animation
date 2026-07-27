@@ -103,6 +103,18 @@ def test_fit_trace_pacmap_has_single_checkpoint_fp_history(synthetic_mnist):
     assert pair_FP_history[0][0] == 0
 
 
+def test_fit_trace_n_components_3_produces_3_column_trace(synthetic_mnist):
+    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    num_iters = (2, 2, 2)
+
+    trace, pair_neighbors, pair_MN, pair_FP_history = cli.fit_trace(
+        X, "pacmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
+        num_iters=num_iters, seed=0, n_components=3,
+    )
+
+    assert trace.shape == (sum(num_iters) + 1, 60, 3)
+
+
 def test_main_renders_multiple_outputs_for_comma_separated_iter(tmp_path, synthetic_mnist):
     out_dir = tmp_path / "run"
     argv = [
