@@ -53,6 +53,36 @@ def test_subsample_pairs_draws_from_within_pool_without_repeats():
     assert all(tuple(row) in [tuple(p) for p in pairs] for row in out)
 
 
+def test_subsample_pairs_indices_returns_shape_matching_count():
+    pairs = np.arange(20).reshape(10, 2)
+    rs = np.random.RandomState(0)
+    idx = cli.subsample_pairs_indices(pairs, 4, rs)
+    assert idx.shape == (4,)
+
+
+def test_subsample_pairs_indices_has_no_repeats_and_is_in_range():
+    pairs = np.arange(20).reshape(10, 2)
+    rs = np.random.RandomState(0)
+    idx = cli.subsample_pairs_indices(pairs, 5, rs)
+    assert len(set(idx.tolist())) == len(idx)
+    assert all(0 <= i < len(pairs) for i in idx)
+
+
+def test_subsample_pairs_indices_caps_at_pool_size():
+    pairs = np.arange(6).reshape(3, 2)
+    rs = np.random.RandomState(0)
+    idx = cli.subsample_pairs_indices(pairs, 100, rs)
+    assert idx.shape == (3,)
+
+
+def test_subsample_pairs_matches_indexing_by_subsample_pairs_indices():
+    pairs = np.arange(40).reshape(20, 2)
+    seed = 7
+    out = cli.subsample_pairs(pairs, 6, np.random.RandomState(seed))
+    idx = cli.subsample_pairs_indices(pairs, 6, np.random.RandomState(seed))
+    assert np.array_equal(out, pairs[idx])
+
+
 def test_pair_dist_is_1_plus_squared_distance():
     Y = np.array([[0.0, 0.0], [3.0, 4.0]])
     pairs = np.array([[0, 1]])

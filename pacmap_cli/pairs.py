@@ -5,11 +5,20 @@ import numpy as np
 from .data import resolve_proportion
 
 
+def subsample_pairs_indices(pairs, m, rs):
+    """Row indices chosen the same way `subsample_pairs` draws rows - exposed
+    so the same source point's far-pair edge can be tracked by index across
+    LocalMAP's resampled pair_FP snapshots (only the target endpoint moves
+    between checkpoints), rather than independently re-subsampling fresh
+    rows at every checkpoint."""
+    m = resolve_proportion(m, len(pairs))
+    return rs.choice(len(pairs), min(m, len(pairs)), replace=False)
+
+
 def subsample_pairs(pairs, m, rs):
     """Draw `m` pairs (or a proportion of `len(pairs)` if `m` is a float in
     (0, 1)) for rendering."""
-    m = resolve_proportion(m, len(pairs))
-    return pairs[rs.choice(len(pairs), min(m, len(pairs)), replace=False)]
+    return pairs[subsample_pairs_indices(pairs, m, rs)]
 
 
 def pair_dist(Y, pairs):

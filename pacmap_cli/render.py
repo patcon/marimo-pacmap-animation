@@ -4,12 +4,13 @@ import time
 
 import numpy as np
 
+from .fp_history import checkpoint_index_for_frame
 from .overlay import compute_overlay_text
-from .pairs import compute_edge_alphas, subsample_pairs
+from .pairs import compute_edge_alphas, subsample_pairs, subsample_pairs_indices
 
 
 def _build_renderer(
-    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     n_lines=150, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
@@ -27,7 +28,14 @@ def _build_renderer(
     total = sum(num_iters)
     PN = subsample_pairs(pair_neighbors, n_lines, rs)
     PM = subsample_pairs(pair_MN, n_lines, rs)
-    PF = subsample_pairs(pair_FP, n_lines, rs)
+    # Sample far-pair row indices once (against any checkpoint - they all
+    # share the same shape) so the same source point's edge is tracked by
+    # index as its target endpoint changes across LocalMAP's resampled
+    # snapshots, instead of independently re-subsampling fresh rows at
+    # every checkpoint.
+    fp_idx = subsample_pairs_indices(pair_FP_history[0][1], n_lines, rs)
+    checkpoint_frames = np.array([f for f, _arr in pair_FP_history])
+    checkpoint_PF = [arr[fp_idx] for _f, arr in pair_FP_history]
     BG = "#0d0d10"
     NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
@@ -83,6 +91,7 @@ def _build_renderer(
     def update(f):
         Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
+        PF = checkpoint_PF[checkpoint_index_for_frame(f, checkpoint_frames)]
         if edge_style_preset == "v3":
             a_nb, a_mn, a_fp = compute_edge_alphas(
                 w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
@@ -103,7 +112,7 @@ def _build_renderer(
 
 
 def render_animation(
-    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
@@ -117,7 +126,7 @@ def render_animation(
     from matplotlib.animation import FuncAnimation
 
     fig, update, total, BG = _build_renderer(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
         n_lines=n_lines, title_prefix=title_prefix,
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
@@ -149,7 +158,7 @@ def render_animation(
 
 
 def render_frame(
-    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     out_path, frame, n_lines=150, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
@@ -160,7 +169,7 @@ def render_frame(
     import matplotlib.pyplot as plt
 
     fig, update, total, BG = _build_renderer(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
         n_lines=n_lines, title_prefix=title_prefix,
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,

@@ -12,7 +12,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
     """Fit once, then render one output per (iter_item, out_path) pair in
     iter_out_paths - iter_item is None (full range), an int (single-iteration
     png), or a (start, end) tuple (range mp4)."""
-    trace, pair_neighbors, pair_MN, pair_FP = fit_trace(
+    trace, pair_neighbors, pair_MN, pair_FP_history = fit_trace(
         X,
         algorithm,
         n_neighbors=cfg["n_neighbors"],
@@ -26,7 +26,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
 
     total = sum(cfg["num_iters"])
     common = dict(
-        trace=trace, y=y, W=W, pair_neighbors=pair_neighbors, pair_MN=pair_MN, pair_FP=pair_FP,
+        trace=trace, y=y, W=W, pair_neighbors=pair_neighbors, pair_MN=pair_MN, pair_FP_history=pair_FP_history,
         num_iters=cfg["num_iters"], center=center, r_s=r_s, rs=rs,
         n_lines=cfg["n_lines"],
         title_prefix=f"{algorithm} " if algorithm == "localmap" else "",
