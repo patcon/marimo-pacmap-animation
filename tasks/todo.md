@@ -28,12 +28,13 @@ See `tasks/plan.md` for full detail, acceptance criteria, and open questions.
 - [x] Task 5: fixed camera by default (`elev=20, azim=-60`); opt-in `--rotate` sweeps one full revolution over the animation - visually confirmed frame 0 vs. frame 15 (halfway) show opposite viewing angles
 
 ## Phase 5: Naming + tests
-- [ ] Task 6: `_3d` filename marker (not `TAG_PARAMS`) so 2D/3D outputs never collide
-- [ ] Task 7: round out test coverage (config defaults/override, e2e smoke test)
+- [x] Task 6: `_3d` filename marker (not `TAG_PARAMS`) so 2D/3D outputs never collide
+- [x] Task 7: round out test coverage (config defaults/override, e2e smoke test) - folded into tasks 1-6 as each landed
 
 ### Checkpoint: Complete
-- [ ] Full `uv run pytest` suite green
-- [ ] Full-length `--n-components 3 --algorithm both` render completes end to end
+- [x] Full `uv run pytest` suite green (112 passed)
+- [x] Full-length `--n-components 3 --algorithm both` render completes end to end (verified with --n 1000, both pacmap_mnist_3d.mp4 and localmap_mnist_3d.mp4 produced)
+- [x] CLAUDE.md updated: new flags documented, new "3D rendering" architecture bullet added, LocalMAP caveat bullet corrected to credit _build_renderer_3d() too
 - [ ] Ready for review
 
 ## Remaining open questions (not blocking)

@@ -86,11 +86,17 @@ def main(argv=None):
             return f"_iter{iter_item[0]}-{iter_item[1]}", "mp4"
         return f"_iter{iter_item}", "png"
 
+    # n_components doesn't join --tag-output's param_tag() slug (it's a
+    # pipeline choice, not a "differing tunable param" like mn_ratio), but
+    # still needs a filename marker so a 2D and 3D run with otherwise
+    # identical params never collide via unique_path()'s _1/_2 fallback.
+    dim_marker = "_3d" if cfg["n_components"] == 3 else ""
+
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
     out_paths = {
         a: [
-            (iter_item, unique_path(output_dir / f"{a}_mnist{suffix}.{ext}"))
+            (iter_item, unique_path(output_dir / f"{a}_mnist{dim_marker}{suffix}.{ext}"))
             for iter_item in iter_items
             for suffix, ext in [_suffix_ext(iter_item)]
         ]

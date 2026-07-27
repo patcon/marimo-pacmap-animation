@@ -54,6 +54,15 @@ def test_param_tag_num_iters_joined_with_dashes():
     assert cli.param_tag(cfg) == "iters50-50-100"
 
 
+def test_param_tag_excludes_n_components():
+    # n_components is disambiguated via a filename marker (see
+    # test_main_smoke.py), not a --tag-output slug entry - it's a pipeline
+    # choice, not a "differing tunable param" like mn_ratio/n_neighbors.
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["n_components"] = 3
+    assert cli.param_tag(cfg) == "default"
+
+
 def test_unique_path_returns_path_unchanged_if_absent(tmp_path):
     p = tmp_path / "foo.mp4"
     assert cli.unique_path(p) == p
