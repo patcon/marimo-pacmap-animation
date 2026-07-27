@@ -12,11 +12,11 @@ See `tasks/plan.md` for full detail, acceptance criteria, and open questions.
 - [ ] Human review before starting rendering work
 
 ## Phase 2: Minimal 3D rendering
-- [ ] Task 3: `_build_renderer_3d()` — 3D scatter only, static camera, dispatch wiring
+- [x] Task 3: `_build_renderer_3d()` — 3D scatter only, static camera, dispatch wiring
 
 ### Checkpoint: First 3D render
-- [ ] Manual PNG render inspected by human
-- [ ] 2D output unaffected (regression check)
+- [x] Manual PNG render inspected by human - approved
+- [x] 2D output unaffected (regression check) - full suite green, 2D path untouched except new optional n_components kwarg
 
 ## Phase 3: Visual parity
 - [ ] Task 4: Add `Line3DCollection` edges (neighbour/mid-near/further) to 3D renderer

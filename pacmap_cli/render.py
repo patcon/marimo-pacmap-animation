@@ -117,6 +117,65 @@ def _build_renderer(
     return fig, update, total, BG
 
 
+def _build_renderer_3d(
+    trace, y, W, num_iters, center, r_s,
+    title_prefix="",
+    point_size=5, point_alpha=1.0,
+    overlay_style_preset="v1",
+):
+    """3D counterpart to `_build_renderer()`: scatter only (no edges yet -
+    see `pacmap_cli/render.py`'s `_build_renderer` for the full 2D artist
+    set), static camera (`elev=20, azim=-60`, matplotlib's own 3D
+    defaults). Kept as a separate function rather than branching inside
+    `_build_renderer()`, since 3D artists (`Axes3D`, `_offsets3d`, `zlim`)
+    don't share the 2D `Collection`/`set_offsets` API."""
+    import matplotlib.pyplot as plt
+
+    total = sum(num_iters)
+    print(f"Drawing {len(trace[0])} nodes (3D, no edges yet)")
+    BG = "#0d0d10"
+
+    fig = plt.figure(figsize=(7, 8), dpi=110)
+    fig.patch.set_facecolor(BG)
+    ax = fig.add_axes([0.02, 0.14, 0.96, 0.83], projection="3d")
+    ax.set_facecolor(BG)
+    ax.view_init(elev=20, azim=-60)
+    ax.set_box_aspect((1, 1, 1))
+    ax.set_axis_off()
+    axw = fig.add_axes([0.09, 0.05, 0.82, 0.07])
+    axw.set_facecolor(BG)
+    for s in axw.spines.values():
+        s.set_visible(False)
+
+    Y0 = trace[0]
+    scat = ax.scatter(Y0[:, 0], Y0[:, 1], Y0[:, 2], c=y, cmap="tab10",
+                       s=point_size, alpha=point_alpha, linewidths=0)
+    title = ax.text2D(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
+    it = np.arange(total + 1)
+    for j, c in enumerate(("#ffa53d", "#4da6ff", "#ff4d4d")):
+        axw.plot(it, np.log10(W[:, j] + 1), color=c, lw=1.4)
+    for b in (num_iters[0], num_iters[0] + num_iters[1]):
+        axw.axvline(b, color="#555", lw=0.8, ls=":")
+    vline = axw.axvline(0, color="w", lw=1.2)
+    axw.set_xlim(0, total)
+    axw.set_yticks([])
+    axw.tick_params(colors="#888", labelsize=7)
+    axw.set_xlabel("iteration  (log weight)", color="#888", fontsize=8)
+
+    def update(f):
+        Y = trace[f]
+        w_MN, w_NB, w_FP = W[f]
+        scat._offsets3d = (Y[:, 0], Y[:, 1], Y[:, 2])
+        L = r_s[f]; cx, cy, cz = center[f]
+        ax.set_xlim(cx - L, cx + L); ax.set_ylim(cy - L, cy + L); ax.set_zlim(cz - L, cz + L)
+        ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
+        title.set_text(compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset))
+        vline.set_xdata([f, f])
+        return ()
+
+    return fig, update, total, BG
+
+
 def render_animation(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
@@ -125,19 +184,28 @@ def render_animation(
     overlay_style_preset="v1",
     line_alpha=1.0,
     start=None, end=None,
+    n_components=2,
 ):
     """Render trace indices `start`..`end` inclusive (default: the whole
     trace) as an mp4, stepping by `step`."""
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
-    fig, update, total, BG = _build_renderer(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-        n_lines=n_lines, title_prefix=title_prefix,
-        point_size=point_size, point_alpha=point_alpha,
-        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
-        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-    )
+    if n_components == 3:
+        fig, update, total, BG = _build_renderer_3d(
+            trace, y, W, num_iters, center, r_s,
+            title_prefix=title_prefix,
+            point_size=point_size, point_alpha=point_alpha,
+            overlay_style_preset=overlay_style_preset,
+        )
+    else:
+        fig, update, total, BG = _build_renderer(
+            trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+            n_lines=n_lines, title_prefix=title_prefix,
+            point_size=point_size, point_alpha=point_alpha,
+            edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+            overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        )
     start = 0 if start is None else start
     end = total if end is None else end
     frames = list(range(start, end + 1, step))
@@ -170,17 +238,26 @@ def render_frame(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    n_components=2,
 ):
     """Render a single trace index `frame` as a png."""
     import matplotlib.pyplot as plt
 
-    fig, update, total, BG = _build_renderer(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-        n_lines=n_lines, title_prefix=title_prefix,
-        point_size=point_size, point_alpha=point_alpha,
-        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
-        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-    )
+    if n_components == 3:
+        fig, update, total, BG = _build_renderer_3d(
+            trace, y, W, num_iters, center, r_s,
+            title_prefix=title_prefix,
+            point_size=point_size, point_alpha=point_alpha,
+            overlay_style_preset=overlay_style_preset,
+        )
+    else:
+        fig, update, total, BG = _build_renderer(
+            trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+            n_lines=n_lines, title_prefix=title_prefix,
+            point_size=point_size, point_alpha=point_alpha,
+            edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+            overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        )
     print(f"Rendering iteration {frame} of {total} to {out_path}...")
     t0 = time.time()
     update(frame)
