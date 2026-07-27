@@ -246,16 +246,19 @@ def compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix="", preset
 # Render
 # ---------------------------------------------------------------------------
 
-def render_animation(
+def _build_renderer(
     trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
-    out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    n_lines=150, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
 ):
+    """Build the figure/artists and return `(fig, update, total, BG)`, where
+    `update(f)` mutates all artists in place to show trace index `f`. Shared
+    by `render_animation` (many frames -> mp4) and `render_frame` (one frame
+    -> png)."""
     import matplotlib.pyplot as plt
-    from matplotlib.animation import FuncAnimation
     from matplotlib.collections import LineCollection
     from matplotlib.colors import to_rgba
 
@@ -263,7 +266,6 @@ def render_animation(
     PN = subsample_pairs(pair_neighbors, n_lines, rs)
     PM = subsample_pairs(pair_MN, n_lines, rs)
     PF = subsample_pairs(pair_FP, n_lines, rs)
-    frames = list(range(0, len(trace), step))
     BG = "#0d0d10"
     NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
@@ -335,8 +337,36 @@ def render_animation(
         vline.set_xdata([f, f])
         return ()
 
+    return fig, update, total, BG
+
+
+def render_animation(
+    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+    out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    point_size=5, point_alpha=1.0,
+    edge_style_preset="v1", edge_gamma=0.2,
+    overlay_style_preset="v1",
+    line_alpha=1.0,
+    start=None, end=None,
+):
+    """Render trace indices `start`..`end` inclusive (default: the whole
+    trace) as an mp4, stepping by `step`."""
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+
+    fig, update, total, BG = _build_renderer(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+        n_lines=n_lines, title_prefix=title_prefix,
+        point_size=point_size, point_alpha=point_alpha,
+        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
+    start = 0 if start is None else start
+    end = total if end is None else end
+    frames = list(range(start, end + 1, step))
+
     n_frames = len(frames)
-    print(f"Rendering {n_frames} frames ({len(trace)} captured iterations, step={step}) to {out_path}...")
+    print(f"Rendering {n_frames} frames (iterations {start}-{end} of {len(trace)} captured, step={step}) to {out_path}...")
     t0 = time.time()
     report_every = max(1, n_frames // 20)  # ~20 progress lines regardless of frame count
 
@@ -351,6 +381,33 @@ def render_animation(
     anim = FuncAnimation(fig, update, frames=frames, interval=1000 // fps, blit=False)
     anim.save(out_path, writer="ffmpeg", fps=fps, savefig_kwargs={"facecolor": BG},
               progress_callback=progress)
+    plt.close(fig)
+    print("rendered %s in %.0fs" % (out_path, time.time() - t0))
+    return out_path
+
+
+def render_frame(
+    trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+    out_path, frame, n_lines=150, title_prefix="",
+    point_size=5, point_alpha=1.0,
+    edge_style_preset="v1", edge_gamma=0.2,
+    overlay_style_preset="v1",
+    line_alpha=1.0,
+):
+    """Render a single trace index `frame` as a png."""
+    import matplotlib.pyplot as plt
+
+    fig, update, total, BG = _build_renderer(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP, num_iters, center, r_s, rs,
+        n_lines=n_lines, title_prefix=title_prefix,
+        point_size=point_size, point_alpha=point_alpha,
+        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
+    print(f"Rendering iteration {frame} of {total} to {out_path}...")
+    t0 = time.time()
+    update(frame)
+    fig.savefig(out_path, facecolor=BG)
     plt.close(fig)
     print("rendered %s in %.0fs" % (out_path, time.time() - t0))
     return out_path
@@ -390,12 +447,19 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
     )
     W = weight_schedule(cfg["num_iters"])
     center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"])
-    return render_animation(
-        trace, y, W, pair_neighbors, pair_MN, pair_FP, cfg["num_iters"], center, r_s, rs,
+
+    total = sum(cfg["num_iters"])
+    iter_cfg = cfg["iter"]
+    if iter_cfg is not None:
+        bounds = iter_cfg if isinstance(iter_cfg, tuple) else (iter_cfg, iter_cfg)
+        if not (0 <= bounds[0] <= bounds[1] <= total):
+            raise ValueError(f"--iter {iter_cfg} out of range: iterations run 0-{total}")
+
+    common = dict(
+        trace=trace, y=y, W=W, pair_neighbors=pair_neighbors, pair_MN=pair_MN, pair_FP=pair_FP,
+        num_iters=cfg["num_iters"], center=center, r_s=r_s, rs=rs,
         out_path=str(out_path),
         n_lines=cfg["n_lines"],
-        step=cfg["step"],
-        fps=cfg["fps"],
         title_prefix=f"{algorithm} " if algorithm == "localmap" else "",
         point_size=cfg["point_size"],
         point_alpha=cfg["point_alpha"],
@@ -404,6 +468,10 @@ def run_algorithm(X, y, rs, algorithm, cfg, out_path):
         overlay_style_preset=cfg["overlay_style_preset"],
         line_alpha=cfg["line_alpha"],
     )
+    if isinstance(iter_cfg, int):
+        return render_frame(**common, frame=iter_cfg)
+    start, end = iter_cfg if isinstance(iter_cfg, tuple) else (None, None)
+    return render_animation(**common, step=cfg["step"], fps=cfg["fps"], start=start, end=end)
 
 
 DEFAULT_CONFIG = {
@@ -425,6 +493,7 @@ DEFAULT_CONFIG = {
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
+    "iter": None,              # None -> full-range video (default); int -> single-iteration png; (start, end) tuple -> range video
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -500,6 +569,15 @@ def parse_count_arg(value):
     return v if 0 < v < 1 else int(v)
 
 
+def parse_iter_arg(value):
+    """Parse a --iter CLI value: "N" -> int N (single iteration -> png), or
+    "A-B" -> (int(A), int(B)) tuple (iteration range -> mp4)."""
+    if "-" in value:
+        start, end = value.split("-", 1)
+        return (int(start), int(end))
+    return int(value)
+
+
 def parse_args(argv=None):
     d = DEFAULT_CONFIG
     p = argparse.ArgumentParser(description=__doc__)
@@ -557,6 +635,13 @@ def parse_args(argv=None):
                          "embedding. Pass a digit (e.g. --focus-label 3), or pass the flag with "
                          "no value to be prompted for one interactively after MNIST loads "
                          f"(default: {d['focus_label']})")
+    p.add_argument("--iter", type=str, default=None,
+                    help="render only this iteration or range of iterations, indexed directly "
+                         "against pacmap's iteration count (0-sum(--num-iters)) rather than the "
+                         "--step-derived animation frame. A single value (e.g. --iter 150) "
+                         "renders one still frame as a png; a range (e.g. --iter 50-300) renders "
+                         "an mp4 spanning just those iterations, still subsampled by --step "
+                         "(default: full 0-total range as an mp4)")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -589,6 +674,7 @@ def build_config(args):
         "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
         "focus_label": args.focus_label,
+        "iter": parse_iter_arg(args.iter) if args.iter is not None else None,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
@@ -633,9 +719,19 @@ def main(argv=None):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     algorithms = ["pacmap", "localmap"] if cfg["algorithm"] == "both" else [cfg["algorithm"]]
+    # A single --iter value renders one still frame (png); None or a range
+    # renders the usual mp4. The suffix makes different --iter renders in
+    # the same directory distinguishable at a glance.
+    iter_cfg = cfg["iter"]
+    if iter_cfg is None:
+        suffix, ext = "", "mp4"
+    elif isinstance(iter_cfg, tuple):
+        suffix, ext = f"_iter{iter_cfg[0]}-{iter_cfg[1]}", "mp4"
+    else:
+        suffix, ext = f"_iter{iter_cfg}", "png"
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
-    out_paths = {a: unique_path(output_dir / f"{a}_mnist.mp4") for a in algorithms}
+    out_paths = {a: unique_path(output_dir / f"{a}_mnist{suffix}.{ext}") for a in algorithms}
 
     for algorithm in algorithms:
         run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm])
