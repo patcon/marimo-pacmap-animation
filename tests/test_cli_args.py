@@ -43,6 +43,18 @@ def test_build_config_cli_flag_overrides_default():
     assert cfg["mn_ratio"] == 0.8
 
 
+def test_build_config_zoom_defaults_to_1():
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["zoom"] == 1.0
+
+
+def test_build_config_zoom_cli_flag_overrides_default():
+    args = cli.parse_args(["--zoom", "2.5"])
+    cfg = cli.build_config(args)
+    assert cfg["zoom"] == 2.5
+
+
 def test_build_config_n_all_resolves_to_none():
     args = cli.parse_args(["--n", "all"])
     cfg = cli.build_config(args)

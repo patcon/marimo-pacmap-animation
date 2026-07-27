@@ -72,3 +72,33 @@ def test_camera_path_focus_label_center_is_nonzero():
     y[:15] = 1
     center, _ = cli.camera_path(trace, y=y, focus_label=1)
     assert not np.allclose(center, 0.0)
+
+
+def test_camera_path_zoom_default_is_unchanged():
+    trace = _linear_trace()
+    _, r_default = cli.camera_path(trace)
+    _, r_zoom1 = cli.camera_path(trace, zoom=1.0)
+    assert np.allclose(r_default, r_zoom1)
+
+
+def test_camera_path_zoom_2x_halves_radius():
+    trace = _linear_trace()
+    _, r = cli.camera_path(trace)
+    _, r_zoomed = cli.camera_path(trace, zoom=2.0)
+    assert np.allclose(r_zoomed, r / 2.0)
+
+
+def test_camera_path_zoom_applies_when_fixed():
+    trace = _linear_trace()
+    _, r = cli.camera_path(trace, fixed=True)
+    _, r_zoomed = cli.camera_path(trace, fixed=True, zoom=2.0)
+    assert np.allclose(r_zoomed, r / 2.0)
+
+
+def test_camera_path_zoom_applies_when_focus_label_set():
+    trace = _linear_trace()
+    y = np.zeros(trace.shape[1], dtype=int)
+    y[:15] = 1
+    _, r = cli.camera_path(trace, y=y, focus_label=1)
+    _, r_zoomed = cli.camera_path(trace, y=y, focus_label=1, zoom=2.0)
+    assert np.allclose(r_zoomed, r / 2.0)

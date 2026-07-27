@@ -22,7 +22,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         seed=cfg["seed"],
     )
     W = weight_schedule(cfg["num_iters"])
-    center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"])
+    center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"], zoom=cfg["zoom"])
 
     total = sum(cfg["num_iters"])
     common = dict(

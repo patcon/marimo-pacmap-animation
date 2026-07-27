@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
     "overlay_style_preset": "v2",  # "v1" (single-line, w_MN as float) or "v2" (w_MN/NB/FP stacked, integer, aligned) - config-file only, not a CLI flag
     "line_alpha": 1.0,       # multiplier on all edge line alphas; turn down when n_lines is high so overlapping lines don't wash out
     "fixed_camera": False,     # True -> lock a single radius instead of zooming out
+    "zoom": 1.0,               # >1 frames a smaller radius (closer/finer detail, cuts off edges); works with fixed_camera and focus_label alike
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
     "iter": None,              # None -> full-range video (default); otherwise a list of items (int -> single-iteration png, (start, end) tuple -> range video), one output rendered per item
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
@@ -112,6 +113,10 @@ def parse_args(argv=None):
                     help="lock a single camera radius sized to the trace's largest extent "
                          "instead of the default smoothed zoom-out, so you can see the true "
                          "scale of movement (early frames start as a tiny dot)")
+    p.add_argument("--zoom", type=float, default=None,
+                    help="camera zoom multiplier; >1 frames a smaller radius to see finer "
+                         "detail at the cost of cutting off the edges of the embedding. "
+                         f"Works alongside --fixed-camera and --focus-label alike (default: {d['zoom']})")
     p.add_argument("--focus-label", type=str, nargs="?", const="__prompt__", default=None,
                     help="camera tracks just this MNIST digit's cluster instead of the whole "
                          "embedding. Pass a digit (e.g. --focus-label 3), or pass the flag with "
@@ -158,6 +163,7 @@ def build_config(args):
         "edge_gamma": args.edge_gamma,
         "line_alpha": args.line_alpha,
         "fixed_camera": args.fixed_camera,
+        "zoom": args.zoom,
         "focus_label": args.focus_label,
         "iter": parse_iter_list(args.iter) if args.iter is not None else None,
         "output_dir": args.output_dir,
