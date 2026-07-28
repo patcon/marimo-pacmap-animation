@@ -3,8 +3,8 @@
 See tasks/plan.md for full task details, acceptance criteria, and verification steps.
 
 ## Phase 1: Foundation
-- [ ] Task 1: `--renderer` flag in config + dispatch registry in render.py (matplotlib default unchanged; fastplotlib stub; fastplotlib+3D rejected until Task 7; `_fpl` filename marker like `_3d`)
-- [ ] Task 2: optional pinned fastplotlib/imageio-ffmpeg dependency group + lazy-import guard with friendly missing-dep error
+- [x] Task 1: `--renderer` flag in config + dispatch registry in render.py (matplotlib default unchanged; fastplotlib stub; fastplotlib+3D rejected until Task 7; `_fpl` filename marker like `_3d`)
+- [x] Task 2: optional pinned fastplotlib/imageio-ffmpeg dependency group + lazy-import guard with friendly missing-dep error
 
 ### Checkpoint: Foundation
 - [ ] Tests pass; default behavior provably unchanged; dispatch seam ready for plotly/vispy

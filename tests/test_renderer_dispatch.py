@@ -114,3 +114,30 @@ def test_main_fastplotlib_filename_gets_fpl_marker(tmp_path, monkeypatch):
     ])
 
     assert (out_dir / "pacmap_mnist_fpl.mp4").exists()
+
+
+# --- Task 2: optional dependency + lazy-import guard ---
+
+def _fastplotlib_installed():
+    import importlib.util
+    return importlib.util.find_spec("fastplotlib") is not None
+
+
+def test_render_fpl_module_imports_without_fastplotlib_installed():
+    # The module itself must import cleanly regardless of whether the
+    # optional dependency is present - fastplotlib is imported lazily,
+    # inside the render functions.
+    import pacmap_cli.render_fpl  # noqa: F401
+
+
+def test_get_backend_fastplotlib_resolves_to_render_fpl_callables():
+    backend = cli.render.get_backend("fastplotlib")
+    assert callable(backend["animation"])
+    assert callable(backend["frame"])
+
+
+@pytest.mark.skipif(_fastplotlib_installed(), reason="fastplotlib is installed")
+def test_fastplotlib_backend_without_dependency_raises_friendly_error():
+    backend = cli.render.get_backend("fastplotlib")
+    with pytest.raises(SystemExit, match="fastplotlib"):
+        backend["frame"](out_path="x.png", frame=0)

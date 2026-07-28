@@ -9,6 +9,15 @@ dependencies = [
     "scikit-learn==1.7.2",
 ]
 
+[project.optional-dependencies]
+# Optional GPU renderer (--renderer fastplotlib): enable with
+# `uv run --extra fastplotlib ...`. Pinned like the core deps; fastplotlib
+# is pre-1.0 and its API churns.
+fastplotlib = [
+    "fastplotlib==0.6.1",
+    "imageio-ffmpeg==0.6.0",
+]
+
 [dependency-groups]
 dev = ["pytest"]
 

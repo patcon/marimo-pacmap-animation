@@ -323,9 +323,8 @@ def _backend_matplotlib():
 
 
 def _backend_fastplotlib():
-    raise NotImplementedError(
-        "the fastplotlib renderer is not implemented yet (see tasks/plan.md)"
-    )
+    from . import render_fpl
+    return {"animation": render_fpl.render_animation_fpl, "frame": render_fpl.render_frame_fpl}
 
 
 # Renderer registry: name -> zero-arg factory returning {"animation": fn,
