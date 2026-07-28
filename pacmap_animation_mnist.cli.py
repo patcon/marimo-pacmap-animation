@@ -7,6 +7,13 @@
 #     "scikit-learn",
 # ]
 # ///
+# PEP 723 has no optional-dependency groups, so the fastplotlib renderer's
+# deps (see the `fastplotlib` extra in pyproject.toml) are not listed above.
+# Extras also don't apply to `uv run <script>.py` runs, so to use them go
+# through the project env via `python`:
+#     uv run --extra fastplotlib python pacmap_animation_mnist.cli.py ...
+# or, for a standalone script run, add the deps explicitly:
+#     uv run --with fastplotlib==0.6.1 --with imageio-ffmpeg==0.6.0 pacmap_animation_mnist.cli.py ...
 """Render a PaCMAP / LocalMAP optimization animation on MNIST from the CLI.
 
     uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/
@@ -18,7 +25,7 @@ orchestrate). This file re-exports everything so it can still be imported
 directly (e.g. from a notebook) exactly as before the split.
 """
 
-from pacmap_cli import camera, config, data, fit, fp_history, orchestrate, overlay, pairs, paths, render
+from pacmap_cli import camera, config, data, fit, fp_history, orchestrate, overlay, pairs, paths, render, render_fpl
 from pacmap_cli.camera import camera_path, weight_schedule
 from pacmap_cli.config import (
     DEFAULT_CONFIG,

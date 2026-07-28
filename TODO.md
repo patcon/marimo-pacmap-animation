@@ -1,0 +1,12 @@
+- [x] add zoom feature
+- [ ] add ability to focus a specific point (not just a label)
+- [x] add ability to specify multiple iters, with ranges. e.g., --iter 50,150,200-400 (png, png, video)
+- [x] run tests in CI
+- [ ] add an --open flag
+- [ ] be smart about re-rendering pacmap/localmap before phase 3
+- [x] patch pacmap lib to be able to recalculate far pairs for viz
+- [ ] ensure --n-lines when a absolute number is the total, and distributes across types. The ensure ratios make sense.
+- [x] add a --renderer flag with a faster GPU backend (fastplotlib, ~2.6x faster; 2D+3D)
+- [ ] add plotly and vispy renderer backends for speed comparison
+- [ ] run the fastplotlib canvas tests in CI via software rendering (lavapipe), instead of skipping when no GPU
+

@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     "rotate": False,           # n_components=3 only: True -> camera sweeps one full revolution over the animation instead of staying fixed
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
     "iter": None,              # None -> full-range video (default); otherwise a list of items (int -> single-iteration png, (start, end) tuple -> range video), one output rendered per item
+    "renderer": "matplotlib",  # plotting backend; see RENDERERS in render.py
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -141,6 +142,11 @@ def parse_args(argv=None):
                          "render several outputs - one png/mp4 fragment per item, sharing a "
                          "single fit/trace - in one invocation "
                          "(default: full 0-total range as an mp4)")
+    p.add_argument("--renderer", choices=["matplotlib", "fastplotlib"], default=None,
+                    help="plotting backend used for rendering. 'fastplotlib' renders "
+                         "offscreen on the GPU (requires the optional fastplotlib "
+                         "dependencies) and marks output filenames with _fpl "
+                         f"(default: {d['renderer']})")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -177,6 +183,7 @@ def build_config(args):
         "rotate": args.rotate,
         "focus_label": args.focus_label,
         "iter": parse_iter_list(args.iter) if args.iter is not None else None,
+        "renderer": args.renderer,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
