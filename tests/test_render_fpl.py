@@ -324,6 +324,26 @@ def test_render_frame_fpl_3d_rotate_changes_view_angle():
     assert not np.allclose(positions[False], positions[True])
 
 
+@requires_fpl
+@pytest.mark.parametrize("n_components", [2, 3])
+def test_render_fpl_transparent_graphics_do_not_write_depth(n_components):
+    # Edges and points are semi-transparent and layered painter-style (edges
+    # under points, matching matplotlib's zorder). If they write depth,
+    # anything drawn after them and sitting behind them in z is depth-culled
+    # instead of alpha-blended: in 3D the edges then "erase" the points
+    # behind them and blend with the background - visible as opaque dark
+    # streaks cutting through clusters - and a dense low-point-alpha cloud
+    # can't accumulate because points cull each other.
+    from pacmap_cli import render_fpl
+
+    inputs = synthetic_render_inputs(n_components=n_components)
+    fig, update, total, BG = render_fpl._build_renderer_fpl(n_lines=5, **inputs)
+    main_graphics = [g for g in fig[0].graphics if hasattr(g, "colors")]
+    assert len(main_graphics) >= 4  # 3 edge layers + scatter
+    for g in main_graphics:
+        assert g.world_object.material.depth_write is False
+
+
 def test_run_algorithm_no_longer_rejects_fastplotlib_3d(monkeypatch):
     # The Task 1 guard must be gone: with a monkeypatched fit and renderer,
     # a fastplotlib+3D run reaches rendering rather than raising.

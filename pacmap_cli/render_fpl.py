@@ -144,6 +144,13 @@ def _build_renderer_fpl(
 
     def add_edges(P, color, thickness):
         line = sub.add_line(edge_segments(Y0, P), thickness=thickness, colors=color)
+        # Semi-transparent overlays must not write depth: edges draw first
+        # (under the points, matching matplotlib's zorder), and if they wrote
+        # depth the scatter drawn after would be depth-culled wherever it
+        # falls behind an edge in z - the edge then blends with the
+        # background instead of the points, showing up as opaque dark
+        # streaks cutting through clusters in 3D.
+        line.world_object.material.depth_write = False
         base = np.tile(np.asarray(Color(color)), (3 * len(P), 1)).astype(np.float32)
         return line, base
 
@@ -156,6 +163,10 @@ def _build_renderer_fpl(
         cmap="tab10", cmap_transform=y, sizes=point_size,
     )
     scat.colors[:, -1] = point_alpha
+    # Same as the edges: without this, semi-transparent points depth-cull
+    # each other, so a dense low-point-alpha cloud can't accumulate opacity
+    # the way matplotlib's does.
+    scat.world_object.material.depth_write = False
 
     from fastplotlib.graphics import TextGraphic
 
