@@ -1,13 +1,15 @@
 """Running PaCMAP/LocalMAP while capturing every optimization iteration."""
 
+import contextlib
 import time
 
 from .cache import fit_key, load_fit, save_fit
 from .fp_history import capture_fp_history, fp_resample_iterations
+from .schedule import override_weight_schedule
 
 
 def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42, n_components=2,
-              low_dist_thres=10.0, cache_dir=None):
+              low_dist_thres=10.0, schedule=None, schedule_params=None, cache_dir=None):
     """Run PaCMAP or LocalMAP, capturing the embedding at every iteration.
 
     `low_dist_thres` is LocalMAP-only (ignored for PaCMAP): the acceptance
@@ -32,6 +34,10 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
     # PaCMAP ignores low_dist_thres, so it must stay out of its key - otherwise
     # varying the knob would needlessly refit the pacmap half of a `both` run.
     key_params = {k: v for k, v in params.items() if algorithm == "localmap" or k != "low_dist_thres"}
+    # Same treatment for the schedule: vanilla leaves the fit unpatched, so its
+    # params can't affect the result and must stay out of the key - otherwise
+    # landing this feature would invalidate every fit cached before it existed.
+    key_params.update(_schedule_key_params(schedule_params))
     key = None
     if cache_dir is not None:
         key = fit_key(X, {**key_params, "algorithm": algorithm, "pacmap_version": pacmap.__version__})
@@ -40,7 +46,7 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
             print(f"{algorithm}: cache hit ({key})")
             return cached
 
-    result = _fit_uncached(X, algorithm, **params)
+    result = _fit_uncached(X, algorithm, **params, schedule=schedule)
 
     if cache_dir is not None:
         path = save_fit(cache_dir, algorithm, key, {**key_params, "pacmap_version": pacmap.__version__}, result)
@@ -48,8 +54,17 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
     return result
 
 
+def _schedule_key_params(schedule_params):
+    """The schedule params that belong in the cache key. Empty for the vanilla
+    preset (which never patches the fit), so its knobs - which vanilla has no
+    use for anyway - can't trigger a refit that would change nothing."""
+    if not schedule_params or schedule_params.get("schedule_preset", "vanilla") == "vanilla":
+        return {}
+    return dict(schedule_params)
+
+
 def _fit_uncached(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed, n_components,
-                  low_dist_thres):
+                  low_dist_thres, schedule=None):
     """The fit itself. Split out from fit_trace() so the caching layer around
     it can be tested (and bypassed) without running a real fit."""
     import pacmap
@@ -72,12 +87,13 @@ def _fit_uncached(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed
         # LocalMAP-only: PaCMAP.__init__ doesn't accept it.
         **({"low_dist_thres": low_dist_thres} if algorithm == "localmap" else {}),
     )
-    if algorithm == "localmap":
-        with capture_fp_history() as calls:
-            trace = reducer.fit_transform(X)  # (total+1, N, n_components) float32
-    else:
+    with contextlib.ExitStack() as stack:
+        # A schedule drives the fit by patching find_weight; None leaves
+        # pacmap's own schedule in place, untouched.
+        if schedule is not None:
+            stack.enter_context(override_weight_schedule(schedule))
+        calls = stack.enter_context(capture_fp_history()) if algorithm == "localmap" else []
         trace = reducer.fit_transform(X)  # (total+1, N, n_components) float32
-        calls = []
     print("%s fit %.1fs" % (algorithm, time.time() - t0), trace.shape, trace.nbytes / 1e6, "MB")
 
     pair_neighbors = reducer.pair_neighbors

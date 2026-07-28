@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-4 done; next up Task 5.
+Status: in progress — Tasks 1-5 done; next up Task 6.
 
 ## Goal
 
@@ -185,7 +185,7 @@ config-file value overridden by CLI flag.
 *Depends on:* nothing (parallel with 1–3). *Files:* `pacmap_cli/config.py`,
 `tests/test_cli_args.py`. *Scope:* S.
 
-### Task 5 — thread through `fit.py` + cache key
+### Task 5 — thread through `fit.py` + cache key — **DONE**
 `fit_trace()` gains `schedule` and `schedule_params`. When `schedule_params` is given
 and `preset != "vanilla"`, merge into `key_params` (and `meta.json`); when vanilla/None
 the key is byte-for-byte what it is today. `_fit_uncached()` wraps `fit_transform` in
