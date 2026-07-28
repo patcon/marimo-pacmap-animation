@@ -144,3 +144,118 @@ def test_render_frame_fpl_edges_add_pixels_beyond_scatter(tmp_path):
         img = np.asarray(Image.open(out).convert("RGB"))
         lit[name] = (img.mean(axis=2) > 40).sum()
     assert lit["with"] > lit["without"]
+
+
+# --- Task 5: overlay text, legend, weight strip ---
+
+def _regions(png_path):
+    """Split a rendered png into (top strip, main body, bottom strip) arrays."""
+    from PIL import Image
+
+    img = np.asarray(Image.open(png_path).convert("RGB"))
+    h = img.shape[0]
+    return img[: int(h * 0.06)], img[int(h * 0.06): int(h * 0.84)], img[int(h * 0.84):]
+
+
+@pytest.mark.skip(reason="Task 5 (overlay/legend/weight strip) deferred until after animation + 3D land")
+@requires_fpl
+def test_render_frame_fpl_overlay_text_present_and_updates(tmp_path):
+    # Render the SAME frame with the two overlay presets: the scatter and
+    # edges are identical, so any difference in the top strip must be the
+    # overlay text itself.
+    inputs = synthetic_render_inputs()
+    tops = {}
+    for preset in ("v1", "v2"):
+        out = tmp_path / f"{preset}.png"
+        cli.render.render_frame(
+            renderer="fastplotlib", out_path=str(out), frame=5, n_lines=5,
+            overlay_style_preset=preset, **inputs,
+        )
+        top, _, _ = _regions(out)
+        tops[preset] = top
+    # white-ish text pixels present (r~g~b, bright), not just colored points
+    rgb = tops["v2"].astype(int)
+    whiteish = (rgb.min(axis=2) > 150) & (rgb.max(axis=2) - rgb.min(axis=2) < 40)
+    assert whiteish.sum() > 20
+    assert not np.array_equal(tops["v1"], tops["v2"])
+
+
+@pytest.mark.skip(reason="Task 5 (overlay/legend/weight strip) deferred until after animation + 3D land")
+@requires_fpl
+def test_render_frame_fpl_weight_strip_present_and_cursor_moves(tmp_path):
+    inputs = synthetic_render_inputs()
+    bottoms = []
+    for frame in (0, 5):
+        out = tmp_path / f"f{frame}.png"
+        cli.render.render_frame(
+            renderer="fastplotlib", out_path=str(out), frame=frame, n_lines=5, **inputs,
+        )
+        _, _, bottom = _regions(out)
+        bottoms.append(bottom)
+    # weight curves: colored (non-grey) pixels present in the strip
+    rgb = bottoms[0].astype(int)
+    colored = (np.abs(rgb[..., 0] - rgb[..., 2]) > 30).sum()
+    assert colored > 50
+    # the current-frame cursor moved between renders
+    assert not np.array_equal(bottoms[0], bottoms[1])
+
+
+# --- Task 6: animation loop -> mp4 ---
+
+@requires_fpl
+def test_render_animation_fpl_writes_playable_mp4(tmp_path):
+    import imageio_ffmpeg
+
+    inputs = synthetic_render_inputs()
+    out = tmp_path / "anim.mp4"
+    result = cli.render.render_animation(
+        renderer="fastplotlib", out_path=str(out), n_lines=5, step=1, fps=5, **inputs,
+    )
+    assert result == str(out)
+    assert out.exists() and out.stat().st_size > 0
+    # full range at step 1 -> frames 0..6 inclusive = 7 frames
+    reader = imageio_ffmpeg.read_frames(str(out))
+    meta = reader.__next__()
+    n = sum(1 for _ in reader)
+    assert meta["fps"] == 5
+    assert n == 7
+
+
+@requires_fpl
+def test_render_animation_fpl_honors_start_end_and_step(tmp_path):
+    import imageio_ffmpeg
+
+    inputs = synthetic_render_inputs()
+    out = tmp_path / "anim_range.mp4"
+    cli.render.render_animation(
+        renderer="fastplotlib", out_path=str(out), n_lines=5, step=2, fps=5,
+        start=1, end=5, **inputs,
+    )
+    reader = imageio_ffmpeg.read_frames(str(out))
+    reader.__next__()
+    # frames 1, 3, 5
+    assert sum(1 for _ in reader) == 3
+
+
+@requires_fpl
+def test_main_end_to_end_with_fastplotlib_renderer(tmp_path, monkeypatch):
+    def fake_load_mnist(n=None, seed=0):
+        rs = np.random.RandomState(seed)
+        n_points = 60 if n is None else int(n)
+        X = rs.rand(n_points, 784).astype(np.float32)
+        y = rs.randint(0, 10, size=n_points)
+        return X, y, rs
+
+    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-lines", "5",
+        "--renderer", "fastplotlib",
+        "--output-dir", str(out_dir),
+    ])
+    out_file = out_dir / "pacmap_mnist_fpl.mp4"
+    assert out_file.exists() and out_file.stat().st_size > 0

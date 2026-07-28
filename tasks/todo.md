@@ -12,9 +12,9 @@ See tasks/plan.md for full task details, acceptance criteria, and verification s
 ## Phase 2: fastplotlib backend
 - [x] Task 3: offscreen still frame — scatter + orthographic camera → png (`--iter N`)
 - [x] Task 4: three pair-type edge layers, NaN-separated lines, per-edge RGBA alpha (v1/v2/v3 presets, far-pair checkpoints)
-- [ ] Task 5: overlay text, legend labels, weight-schedule strip with frame vline
-- [ ] Task 6: animation loop — snapshot frames → imageio-ffmpeg mp4; progress/ETA; `--iter` ranges; record speed comparison vs matplotlib
+- [x] Task 6: animation loop — snapshot frames → imageio-ffmpeg mp4; progress/ETA; `--iter` ranges; record speed comparison vs matplotlib
 - [ ] Task 7: 3D support — 3D buffers, perspective camera, `--rotate` orbit; drop the 3D rejection
+- [ ] Task 5 (deferred to last per user 2026-07-28): overlay text, legend labels, weight-schedule strip with frame vline
 
 ### Checkpoint: Backend complete
 - [ ] Side-by-side visual sign-off (2D + 3D); speed numbers recorded

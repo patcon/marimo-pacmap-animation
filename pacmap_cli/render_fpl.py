@@ -106,6 +106,11 @@ def _build_renderer_fpl(
     # pixel ratio); consumers must read the actual exported shape rather
     # than assume this size.
     fig = fpl.Figure(size=(770, 880), canvas="offscreen")
+    # pygfx supersamples at pixel_ratio 2 by default, which quadruples the
+    # pixels snapshotted and encoded per frame; ratio 1 matches matplotlib's
+    # 770x880 output exactly (materials still shader-antialias) and roughly
+    # halves the per-frame cost.
+    fig.renderer.pixel_ratio = 1
     sub = fig[0, 0]
     sub.background_color = (BG,)  # tuple: the setter iterates (gradient corners)
     sub.axes.visible = False
@@ -202,8 +207,63 @@ def render_frame_fpl(
     return out_path
 
 
-def render_animation_fpl(*args, **kwargs):
-    """Render an iteration range as an mp4. Not implemented yet - lands in
-    plan Task 6 (offscreen frame loop -> imageio-ffmpeg)."""
-    _import_fastplotlib()
-    raise NotImplementedError("fastplotlib animation rendering is not implemented yet (plan Task 6)")
+def render_animation_fpl(
+    trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+    out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    point_size=5, point_alpha=1.0,
+    edge_style_preset="v1", edge_gamma=0.2,
+    overlay_style_preset="v1",
+    line_alpha=1.0,
+    start=None, end=None,
+    n_components=2, rotate=False,
+):
+    """Render trace indices `start`..`end` inclusive (default: the whole
+    trace) as an mp4, stepping by `step` - the fastplotlib counterpart to
+    render.py's `_render_animation_mpl()`. No FuncAnimation: each frame is
+    update() -> offscreen draw -> numpy snapshot, streamed straight into an
+    imageio-ffmpeg writer process."""
+    import imageio_ffmpeg
+
+    fig, update, total, BG = _build_renderer_fpl(
+        trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
+        n_lines=n_lines, title_prefix=title_prefix,
+        point_size=point_size, point_alpha=point_alpha,
+        edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
+        overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+    )
+    start = 0 if start is None else start
+    end = total if end is None else end
+    frames = list(range(start, end + 1, step))
+
+    n_frames = len(frames)
+    print(f"Rendering {n_frames} frames (iterations {start}-{end} of {len(trace)} captured, step={step}) to {out_path}...")
+    t0 = time.time()
+    report_every = max(1, n_frames // 20)  # ~20 progress lines regardless of frame count
+
+    # First frame decides the pixel size (the offscreen canvas renders at
+    # its own pixel ratio, so this can be a multiple of the logical figure
+    # size); macro_block_size=2 keeps ffmpeg happy (h264 needs even dims)
+    # without silently rescaling to a multiple of 16.
+    update(frames[0])
+    frame0 = _export_frame(fig)
+    h, w = frame0.shape[:2]
+    writer = imageio_ffmpeg.write_frames(out_path, (w, h), fps=fps, macro_block_size=2)
+    writer.send(None)  # seed the generator
+
+    try:
+        for i, f in enumerate(frames):
+            if i == 0:
+                rgb = frame0[:, :, :3]
+            else:
+                update(f)
+                rgb = _export_frame(fig)[:, :, :3]
+            writer.send(np.ascontiguousarray(rgb))
+            if i % report_every == 0 or i == n_frames - 1:
+                elapsed = time.time() - t0
+                rate = (i + 1) / elapsed if elapsed > 0 else 0
+                eta = (n_frames - i - 1) / rate if rate > 0 else float("nan")
+                print(f"  frame {i + 1}/{n_frames}  ({elapsed:.0f}s elapsed, ~{eta:.0f}s remaining)")
+    finally:
+        writer.close()
+    print("rendered %s in %.0fs" % (out_path, time.time() - t0))
+    return out_path
