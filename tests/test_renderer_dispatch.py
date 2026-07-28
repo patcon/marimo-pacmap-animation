@@ -121,4 +121,6 @@ def test_get_backend_fastplotlib_resolves_to_render_fpl_callables():
 def test_fastplotlib_backend_without_dependency_raises_friendly_error():
     backend = cli.render.get_backend("fastplotlib")
     with pytest.raises(SystemExit, match="fastplotlib"):
-        backend["frame"](out_path="x.png", frame=0)
+        # placeholder positional args: the lazy-import guard fires before
+        # any of them are touched
+        backend["frame"](*([None] * 10), out_path="x.png", frame=0)

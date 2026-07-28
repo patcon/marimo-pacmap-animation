@@ -20,7 +20,7 @@ See tasks/plan.md for full task details, acceptance criteria, and verification s
 - [ ] Side-by-side visual sign-off (2D + 3D); speed numbers recorded
 
 ## Phase 3: Tests, CI, docs
-- [ ] Task 8: GPU-free tests (parsing, dispatch, missing-dep error) + skipif guards for canvas tests; CI stays green
+- [x] Task 8: GPU-free tests (parsing, dispatch, missing-dep error) + skipif guards for canvas tests; CI stays green
 - [ ] Task 9: CLAUDE.md "Renderer backends" section + flag docs + TODO.md updates
 
 ### Checkpoint: Complete
