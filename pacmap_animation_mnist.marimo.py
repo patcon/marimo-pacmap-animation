@@ -287,8 +287,8 @@ def _(
     ax.set_xticks([])
     ax.set_yticks([])
     lc_fp = LineCollection([], colors="#ff4d4d", linewidths=0.5, zorder=1)
-    lc_mn = LineCollection([], colors="#ffa53d", linewidths=0.7, zorder=2)
-    lc_nb = LineCollection([], colors="#4da6ff", linewidths=0.7, zorder=3)
+    lc_mn = LineCollection([], colors="#ffa53d", linewidths=0.5, zorder=2)
+    lc_nb = LineCollection([], colors="#4da6ff", linewidths=0.5, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb): ax.add_collection(lc)
     scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10",
                       s=5, linewidths=0, zorder=4)
@@ -385,8 +385,8 @@ def _(
     ax_lm.set_xticks([])
     ax_lm.set_yticks([])
     lc_fp_lm = LineCollection([], colors='#ff4d4d', linewidths=0.5, zorder=1)
-    lc_mn_lm = LineCollection([], colors='#ffa53d', linewidths=0.7, zorder=2)
-    lc_nb_lm = LineCollection([], colors='#4da6ff', linewidths=0.7, zorder=3)
+    lc_mn_lm = LineCollection([], colors='#ffa53d', linewidths=0.5, zorder=2)
+    lc_nb_lm = LineCollection([], colors='#4da6ff', linewidths=0.5, zorder=3)
     for lc_1 in (lc_fp_lm, lc_mn_lm, lc_nb_lm):
         ax_lm.add_collection(lc_1)
     scat_lm = ax_lm.scatter(trace_lm[0][:, 0], trace_lm[0][:, 1], c=y, cmap='tab10', s=5, linewidths=0, zorder=4)

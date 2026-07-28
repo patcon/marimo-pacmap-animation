@@ -8,6 +8,13 @@ from .fp_history import checkpoint_index_for_frame
 from .overlay import compute_overlay_text
 from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
 
+# One width for every pair type. Edges used to draw at 0.5 (further) vs 0.7
+# (mid-near, neighbour), which was never a deliberate encoding - pair type is
+# already carried by color - so the thinner value now applies to all three,
+# matching the fastplotlib backend (where merging the types into one buffer
+# forced a single shared thickness anyway).
+EDGE_LINEWIDTH = 0.5
+
 
 def _build_renderer(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
@@ -56,9 +63,9 @@ def _build_renderer(
             s.set_visible(False)
     ax.set_xticks([])
     ax.set_yticks([])
-    lc_fp = LineCollection([], colors=FP_COLOR, linewidths=0.5, zorder=1)
-    lc_mn = LineCollection([], colors=MN_COLOR, linewidths=0.7, zorder=2)
-    lc_nb = LineCollection([], colors=NB_COLOR, linewidths=0.7, zorder=3)
+    lc_fp = LineCollection([], colors=FP_COLOR, linewidths=EDGE_LINEWIDTH, zorder=1)
+    lc_mn = LineCollection([], colors=MN_COLOR, linewidths=EDGE_LINEWIDTH, zorder=2)
+    lc_nb = LineCollection([], colors=NB_COLOR, linewidths=EDGE_LINEWIDTH, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection(lc)
     scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10",
@@ -167,9 +174,9 @@ def _build_renderer_3d(
     for s in axw.spines.values():
         s.set_visible(False)
 
-    lc_fp = Line3DCollection([], colors=FP_COLOR, linewidths=0.5, zorder=1)
-    lc_mn = Line3DCollection([], colors=MN_COLOR, linewidths=0.7, zorder=2)
-    lc_nb = Line3DCollection([], colors=NB_COLOR, linewidths=0.7, zorder=3)
+    lc_fp = Line3DCollection([], colors=FP_COLOR, linewidths=EDGE_LINEWIDTH, zorder=1)
+    lc_mn = Line3DCollection([], colors=MN_COLOR, linewidths=EDGE_LINEWIDTH, zorder=2)
+    lc_nb = Line3DCollection([], colors=NB_COLOR, linewidths=EDGE_LINEWIDTH, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection3d(lc, autolim=False)
     Y0 = trace[0]
