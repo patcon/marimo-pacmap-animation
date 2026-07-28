@@ -1,17 +1,39 @@
 """Top-level orchestration: run one algorithm end to end, and the CLI entry point."""
 
-from .camera import camera_path, weight_schedule
+import numpy as np
+
+from .camera import camera_path
 from .config import build_config, parse_args, resolve_focus_label
 from .data import load_mnist
 from .fit import fit_trace
 from .paths import param_tag, resolve_output_dir, unique_path
 from .render import RENDERER_FILE_MARKERS, render_animation, render_frame
+from .schedule import build_schedule
+
+
+SCHEDULE_PARAM_KEYS = ("schedule_preset", "schedule_period", "schedule_mn_min", "schedule_mn_max")
+
+
+def schedule_for(cfg):
+    """The per-iteration weight schedule this run is driven by.
+
+    The cycle knobs are passed only to presets that have them - vanilla has no
+    period - which is the same rule the cache key and the --tag-output slug
+    apply to those params."""
+    knobs = {} if cfg["schedule_preset"] == "vanilla" else dict(
+        period=cfg["schedule_period"], mn_min=cfg["schedule_mn_min"], mn_max=cfg["schedule_mn_max"],
+    )
+    return build_schedule(cfg["schedule_preset"], cfg["num_iters"], **knobs)
 
 
 def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
     """Fit once, then render one output per (iter_item, out_path) pair in
     iter_out_paths - iter_item is None (full range), an int (single-iteration
     png), or a (start, end) tuple (range mp4)."""
+    # Built once and used twice: to drive the fit, and to display what drove
+    # it. Passing `schedule=None` for vanilla leaves pacmap's own schedule
+    # entirely unpatched rather than re-deriving an identical one.
+    S = schedule_for(cfg)
     trace, pair_neighbors, pair_MN, pair_FP_history = fit_trace(
         X,
         algorithm,
@@ -22,9 +44,11 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         seed=cfg["seed"],
         n_components=cfg["n_components"],
         low_dist_thres=cfg["low_dist_thres"],
+        schedule=None if cfg["schedule_preset"] == "vanilla" else S,
+        schedule_params={k: cfg[k] for k in SCHEDULE_PARAM_KEYS},
         cache_dir=cfg["cache_dir"] if cfg["cache"] else None,
     )
-    W = weight_schedule(cfg["num_iters"])
+    W = np.vstack([S[0], S])  # prepend the init frame so index == snapshot index
     center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"], zoom=cfg["zoom"])
 
     total = sum(cfg["num_iters"])
@@ -69,6 +93,12 @@ def main(argv=None):
     # still stays gated behind the overwrite-confirmation below.
     X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
     cfg["focus_label"] = resolve_focus_label(cfg["focus_label"], y)
+
+    # The default camera only ever zooms out (a monotonic ratchet), so a
+    # cycling embedding's contraction phase reads as the picture shrinking.
+    if cfg["schedule_preset"] != "vanilla" and not cfg["fixed_camera"]:
+        print(f"note: --schedule-preset {cfg['schedule_preset']} makes the embedding expand and "
+              "contract; the default camera only zooms out, so consider --fixed-camera")
 
     output_dir = resolve_output_dir(cfg["output_dir"])
     if args.tag_output:

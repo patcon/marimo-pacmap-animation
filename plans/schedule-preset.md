@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-6 done; next up Task 7.
+Status: in progress — Tasks 1-7 done (feature usable end to end); next up Task 8 (docs).
 
 ## Goal
 
@@ -223,7 +223,7 @@ into the slug.
 *Depends on:* Task 4. *Files:* `pacmap_cli/paths.py`, `tests/test_output_paths.py`.
 *Scope:* XS.
 
-### Task 7 — orchestration
+### Task 7 — orchestration — **DONE**
 In `run_algorithm()`: build `S` before the fit; pass
 `schedule=S if preset != "vanilla" else None` plus `schedule_params` to `fit_trace()`;
 replace `W = weight_schedule(cfg["num_iters"])` with `W = np.vstack([S[0], S])`. Print
