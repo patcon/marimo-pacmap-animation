@@ -3,6 +3,8 @@
 import argparse
 import json
 
+from .schedule import PRESETS
+
 
 DEFAULT_CONFIG = {
     "n": 5000,
@@ -13,6 +15,10 @@ DEFAULT_CONFIG = {
     "fp_ratio": 2.0,
     "low_dist_thres": 10.0,    # LocalMAP only (ignored by PaCMAP): acceptance distance for the "local" further pairs it resamples every 10 iterations
     "num_iters": [100, 100, 250],
+    "schedule_preset": "vanilla",  # pair-weight schedule driving the fit; "vanilla" is pacmap's own (and leaves the fit unpatched), "cycle" sweeps local<->global forever. See schedule.py
+    "schedule_period": 100,    # cycle only: iterations per full local<->global sweep
+    "schedule_mn_min": 0.05,   # cycle only: w_MN at the local end of the sweep (must be > 0; the sweep is log-spaced)
+    "schedule_mn_max": 100.0,  # cycle only: w_MN at the global end of the sweep
     "seed": 42,
     "n_lines": 150,
     "step": 3,
@@ -92,6 +98,22 @@ def parse_args(argv=None):
                          f"the green edges the phase-3 animation shows (default: {d['low_dist_thres']})")
     p.add_argument("--num-iters", type=str, default=None,
                     help=f"comma-separated PaCMAP phase lengths, e.g. 100,100,250 (default: {','.join(map(str, d['num_iters']))})")
+    p.add_argument("--schedule-preset", choices=sorted(PRESETS), default=None,
+                    help="pair-weight schedule the fit is driven by. 'vanilla' is pacmap's "
+                         "own three-phase schedule, left entirely unpatched. 'cycle' instead "
+                         "sweeps w_MN back and forth between global- and local-structure "
+                         "emphasis indefinitely, so the embedding runs as a limit cycle rather "
+                         f"than converging (default: {d['schedule_preset']})")
+    p.add_argument("--schedule-period", type=int, default=None,
+                    help="--schedule-preset cycle only: iterations per full global->local->global "
+                         f"sweep (default: {d['schedule_period']})")
+    p.add_argument("--schedule-mn-min", type=float, default=None,
+                    help="--schedule-preset cycle only: w_MN at the local end of the sweep. Must "
+                         "be > 0 - the sweep is log-spaced, since w_MN is a scale parameter "
+                         f"(default: {d['schedule_mn_min']})")
+    p.add_argument("--schedule-mn-max", type=float, default=None,
+                    help="--schedule-preset cycle only: w_MN at the global end of the sweep, "
+                         f"where each cycle starts (default: {d['schedule_mn_max']})")
     p.add_argument("--seed", type=int, default=None,
                     help=f"(default: {d['seed']})")
     p.add_argument("--n-lines", type=str, default=None,
@@ -185,6 +207,10 @@ def build_config(args):
         "fp_ratio": args.fp_ratio,
         "low_dist_thres": args.low_dist_thres,
         "num_iters": [int(x) for x in args.num_iters.split(",")] if args.num_iters else None,
+        "schedule_preset": args.schedule_preset,
+        "schedule_period": args.schedule_period,
+        "schedule_mn_min": args.schedule_mn_min,
+        "schedule_mn_max": args.schedule_mn_max,
         "seed": args.seed,
         "n_lines": parse_count_arg(args.n_lines) if args.n_lines is not None else None,
         "step": args.step,

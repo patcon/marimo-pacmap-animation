@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-3 done (Checkpoint A reached); next up Task 4.
+Status: in progress — Tasks 1-4 done; next up Task 5.
 
 ## Goal
 
@@ -172,7 +172,7 @@ the body raises; a wrong-signature stand-in triggers the `RuntimeError` guard (f
 `uv run pytest tests/test_schedule.py tests/test_camera_and_weights.py` green. No other
 module touched yet.
 
-### Task 4 — config surface
+### Task 4 — config surface — **DONE**
 Add `DEFAULT_CONFIG` entries and argparse flags `--schedule-preset {vanilla,cycle}`,
 `--schedule-period` (int), `--schedule-mn-min` / `--schedule-mn-max` (float), all
 defaulting to `None` at the argparse layer and wired through `build_config()`'s
