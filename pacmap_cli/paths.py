@@ -49,6 +49,9 @@ TAG_PARAMS = [
     ("schedule_period", "period"),
     ("schedule_mn_min", "mnmin"),
     ("schedule_mn_max", "mnmax"),
+    ("schedule_fp_min", "fpmin"),
+    ("schedule_fp_max", "fpmax"),
+    ("schedule_fp_phase", "fpphase"),
     ("seed", "seed"),
     ("n_lines", "nlines"),
     ("step", "step"),
@@ -71,7 +74,7 @@ def param_tag(cfg):
     # patch the fit at all), so they shouldn't split a comparison folder in
     # two - the same rule the cache key applies to them.
     skip = set() if cfg["schedule_preset"] != "vanilla" else {
-        "schedule_period", "schedule_mn_min", "schedule_mn_max",
+        key for key, _ in TAG_PARAMS if key.startswith("schedule_") and key != "schedule_preset"
     }
     for key, abbr in TAG_PARAMS:
         if key in skip:

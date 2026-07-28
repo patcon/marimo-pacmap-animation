@@ -109,3 +109,22 @@ def test_no_camera_hint_when_fixed_camera_is_already_set(tmp_path, harness, caps
 def test_no_camera_hint_for_a_vanilla_run(tmp_path, harness, capsys):
     _run(tmp_path)
     assert "--fixed-camera" not in capsys.readouterr().out
+
+
+def test_breathe_preset_reaches_the_fit_with_its_fp_knobs(tmp_path, harness):
+    _run(tmp_path, "--schedule-preset", "breathe", "--schedule-period", "4",
+         "--schedule-fp-min", "0.2", "--schedule-fp-max", "5")
+    schedule = harness["fit"][0]["schedule"]
+    # Unset knobs come from breathe's own defaults (w_MN held at 3.0, phase 0),
+    # not from DEFAULT_CONFIG - that's what makes a preset a shape rather than
+    # just a name.
+    expected = cli.build_schedule(
+        "breathe", NUM_ITERS, period=4, mn_min=3.0, mn_max=3.0,
+        fp_min=0.2, fp_max=5.0, fp_phase=0.0,
+    )
+    assert np.array_equal(schedule, expected)
+
+
+def test_fp_knobs_reach_the_cache_key(tmp_path, harness):
+    _run(tmp_path, "--schedule-preset", "cycle", "--schedule-fp-max", "5")
+    assert harness["fit"][0]["schedule_params"]["schedule_fp_max"] == 5.0

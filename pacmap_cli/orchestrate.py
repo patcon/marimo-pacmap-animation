@@ -8,22 +8,36 @@ from .data import load_mnist
 from .fit import fit_trace
 from .paths import param_tag, resolve_output_dir, unique_path
 from .render import RENDERER_FILE_MARKERS, render_animation, render_frame
-from .schedule import build_schedule
+from .schedule import build_schedule, preset_defaults
 
 
-SCHEDULE_PARAM_KEYS = ("schedule_preset", "schedule_period", "schedule_mn_min", "schedule_mn_max")
+def resolve_schedule_knobs(cfg):
+    """The knob values this run's preset actually uses: the preset's own
+    defaults, with any explicitly-set flag overriding.
+
+    Resolving once - rather than passing cfg's values straight through - is
+    what lets each preset define its own shape (`breathe` holds w_MN and
+    sweeps w_FP purely by defaulting them that way). It also means the cache
+    key sees effective values, so passing a knob explicitly at its default
+    can't fork a second cache entry for an identical fit. Vanilla takes no
+    knobs at all, so this is empty for it."""
+    return {
+        knob: cfg[f"schedule_{knob}"] if cfg.get(f"schedule_{knob}") is not None else default
+        for knob, default in preset_defaults(cfg["schedule_preset"]).items()
+    }
+
+
+def schedule_params_for(cfg):
+    """The schedule's contribution to the cache key and the --tag-output slug:
+    the preset plus its effective knobs."""
+    knobs = resolve_schedule_knobs(cfg)
+    return {"schedule_preset": cfg["schedule_preset"],
+            **{f"schedule_{k}": v for k, v in knobs.items()}}
 
 
 def schedule_for(cfg):
-    """The per-iteration weight schedule this run is driven by.
-
-    The cycle knobs are passed only to presets that have them - vanilla has no
-    period - which is the same rule the cache key and the --tag-output slug
-    apply to those params."""
-    knobs = {} if cfg["schedule_preset"] == "vanilla" else dict(
-        period=cfg["schedule_period"], mn_min=cfg["schedule_mn_min"], mn_max=cfg["schedule_mn_max"],
-    )
-    return build_schedule(cfg["schedule_preset"], cfg["num_iters"], **knobs)
+    """The per-iteration weight schedule this run is driven by."""
+    return build_schedule(cfg["schedule_preset"], cfg["num_iters"], **resolve_schedule_knobs(cfg))
 
 
 def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
@@ -45,7 +59,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         n_components=cfg["n_components"],
         low_dist_thres=cfg["low_dist_thres"],
         schedule=None if cfg["schedule_preset"] == "vanilla" else S,
-        schedule_params={k: cfg[k] for k in SCHEDULE_PARAM_KEYS},
+        schedule_params=schedule_params_for(cfg),
         cache_dir=cfg["cache_dir"] if cfg["cache"] else None,
     )
     W = np.vstack([S[0], S])  # prepend the init frame so index == snapshot index

@@ -201,11 +201,13 @@ def test_build_config_schedule_preset_defaults_to_vanilla():
     assert cfg["schedule_preset"] == "vanilla"
 
 
-def test_build_config_schedule_knobs_default_to_period_100_bounds_0p05_to_100():
+def test_build_config_schedule_knobs_default_to_the_presets_own():
+    """None means "whatever this preset defaults to" - a concrete default here
+    would override every preset back into the same shape."""
     cfg = cli.build_config(cli.parse_args([]))
-    assert cfg["schedule_period"] == 100
-    assert cfg["schedule_mn_min"] == 0.05
-    assert cfg["schedule_mn_max"] == 100.0
+    assert cfg["schedule_period"] is None
+    assert cfg["schedule_mn_min"] is None
+    assert cfg["schedule_mn_max"] is None
 
 
 def test_build_config_schedule_preset_flag_overrides_default():
@@ -246,3 +248,26 @@ def test_build_config_schedule_cli_flag_wins_over_config_file(tmp_path):
     ]))
     assert cfg["schedule_preset"] == "cycle"
     assert cfg["schedule_period"] == 50
+
+
+def test_cycle_preset_holds_repulsion_unless_asked_otherwise():
+    """cycle sweeps attraction alone by default: w_FP's bounds coincide at 1.0,
+    which is the vanilla value."""
+    d = cli.schedule.preset_defaults("cycle")
+    assert d["fp_min"] == 1.0 and d["fp_max"] == 1.0
+    assert d["fp_phase"] == 0.5  # antiphase, once the bounds are opened up
+
+
+def test_build_config_fp_knob_flags_override_defaults():
+    cfg = cli.build_config(cli.parse_args([
+        "--schedule-preset", "cycle", "--schedule-fp-min", "0.2",
+        "--schedule-fp-max", "5", "--schedule-fp-phase", "0",
+    ]))
+    assert cfg["schedule_fp_min"] == 0.2
+    assert cfg["schedule_fp_max"] == 5.0
+    assert cfg["schedule_fp_phase"] == 0.0
+
+
+def test_parse_args_accepts_the_breathe_preset():
+    cfg = cli.build_config(cli.parse_args(["--schedule-preset", "breathe"]))
+    assert cfg["schedule_preset"] == "breathe"

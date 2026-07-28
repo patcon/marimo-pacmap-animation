@@ -126,3 +126,17 @@ def test_param_tag_excludes_cycle_knobs_under_the_vanilla_preset():
     cfg["schedule_period"] = 200
     cfg["schedule_mn_min"] = 0.5
     assert cli.param_tag(cfg) == "default"
+
+
+def test_param_tag_includes_fp_knobs_under_a_cycling_preset():
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["schedule_preset"] = "breathe"
+    cfg["schedule_fp_max"] = 5.0
+    assert cli.param_tag(cfg) == "schedbreathe_fpmax5.0"
+
+
+def test_param_tag_excludes_fp_knobs_under_the_vanilla_preset():
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["schedule_fp_max"] = 5.0
+    cfg["schedule_fp_phase"] = 0.0
+    assert cli.param_tag(cfg) == "default"

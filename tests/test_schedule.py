@@ -106,6 +106,69 @@ def test_cycle_rejects_nonpositive_period():
         cli.build_schedule("cycle", (0, 0, 400), period=0)
 
 
+def test_cycle_still_holds_w_fp_at_1_by_default():
+    """Regression: adding the repulsion channel must not change what --schedule-preset
+    cycle already does, since its cached fits are keyed on those params."""
+    S = cli.build_schedule("cycle", (0, 0, 400), period=100, mn_min=0.05, mn_max=100.0)
+    assert np.all(S[:, 2] == 1.0)
+
+
+def test_cycle_can_sweep_w_fp_too():
+    """Cycling both ratios at once: the attractive and repulsive channels each
+    get their own bounds."""
+    S = cli.build_schedule("cycle", (0, 0, 400), period=100, fp_min=0.2, fp_max=5.0, fp_phase=0.0)
+    assert S[0, 2] == pytest.approx(5.0)
+    assert S[50, 2] == pytest.approx(0.2)
+
+
+def test_w_fp_sweeps_in_log_space_like_w_mn():
+    S = cli.build_schedule("cycle", (0, 0, 400), period=100, fp_min=0.2, fp_max=5.0, fp_phase=0.0)
+    assert S[25, 2] == pytest.approx(np.sqrt(0.2 * 5.0))
+
+
+def test_fp_phase_half_puts_repulsion_in_antiphase_with_attraction():
+    """The default: when global attraction peaks, repulsion troughs, so the
+    condense and expand halves of a cycle reinforce instead of cancelling."""
+    S = cli.build_schedule("cycle", (0, 0, 400), period=100,
+                           mn_min=0.05, mn_max=100.0, fp_min=0.2, fp_max=5.0, fp_phase=0.5)
+    assert S[0, 0] == pytest.approx(100.0)  # w_MN at its max
+    assert S[0, 2] == pytest.approx(0.2)    # w_FP simultaneously at its min
+    assert S[50, 0] == pytest.approx(0.05)
+    assert S[50, 2] == pytest.approx(5.0)
+
+
+def test_fp_phase_defaults_to_antiphase():
+    explicit = cli.build_schedule("cycle", (0, 0, 400), fp_min=0.2, fp_max=5.0, fp_phase=0.5)
+    default = cli.build_schedule("cycle", (0, 0, 400), fp_min=0.2, fp_max=5.0)
+    assert np.array_equal(default, explicit)
+
+
+def test_breathe_sweeps_repulsion_and_holds_attraction():
+    """The repulsive channel is the visually legible one: an inhale that spreads
+    and untangles, an exhale that lets attraction re-condense."""
+    S = cli.build_schedule("breathe", (0, 0, 400), period=100)
+    assert len(set(np.round(S[:, 0], 9))) == 1  # w_MN held
+    assert S[:, 2].max() > S[:, 2].min()        # w_FP sweeps
+
+
+def test_breathe_holds_w_mn_at_vanillas_settled_value():
+    S = cli.build_schedule("breathe", (0, 0, 400))
+    assert np.all(S[:, 0] == pytest.approx(3.0))
+
+
+@pytest.mark.parametrize("bad", [{"fp_min": 0.0}, {"fp_min": -1.0}, {"fp_max": 0.0}])
+def test_cycle_rejects_nonpositive_fp_bounds(bad):
+    with pytest.raises(ValueError):
+        cli.build_schedule("cycle", (0, 0, 400), **bad)
+
+
+def test_both_channels_can_cycle_at_different_amplitudes():
+    S = cli.build_schedule("cycle", (0, 0, 400), period=100,
+                           mn_min=1.0, mn_max=1000.0, fp_min=0.5, fp_max=2.0, fp_phase=0.5)
+    assert S[:, 0].max() / S[:, 0].min() == pytest.approx(1000.0)
+    assert S[:, 2].max() / S[:, 2].min() == pytest.approx(4.0)
+
+
 def _sentinel_schedule(total):
     """A schedule whose every value is distinguishable from every other, so a
     test can tell exactly which row was served."""

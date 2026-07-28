@@ -28,34 +28,92 @@ def _vanilla(num_iters):
     )
 
 
-def _cycle(num_iters, period=100, mn_min=0.05, mn_max=100.0):
-    """Sweep w_MN back and forth between global- and local-structure
-    emphasis, forever, instead of converging once.
+def _log_sweep(t, period, lo, hi, phase, name):
+    """One channel's sinusoidal sweep between `lo` and `hi`.
+
+    Log-spaced because these weights are scale parameters: perceptually even
+    steps are multiplicative, not additive, and the meaningful quantity is a
+    ratio like w_MN/w_NB rather than a difference. Bounds must stay above
+    zero - vanilla's w_MN = 0 endpoint sits at infinite log-ratio distance
+    and so isn't a point a continuous sweep can pass through.
+
+    Anchored on cos rather than sin, so at `phase=0` a run opens at `hi`
+    rather than mid-sweep. `phase` is in cycles: 0.5 is antiphase.
+    """
+    if lo <= 0 or hi <= 0:
+        raise ValueError(f"log-spaced {name} bounds must be positive, got {lo} and {hi}")
+    u = (1 + np.cos(2 * np.pi * (t / period + phase))) / 2
+    return np.exp((1 - u) * np.log(lo) + u * np.log(hi))
+
+
+def _cycle(num_iters, period=100, mn_min=0.05, mn_max=100.0,
+           fp_min=1.0, fp_max=1.0, fp_phase=0.5):
+    """Sweep the force balance back and forth forever instead of converging
+    once, so the embedding runs as a limit cycle rather than toward a fixed
+    point.
 
     Only the *ratios* between the three forces matter - scaling all of them
     scales the gradient, which Adam's per-parameter normalization largely
-    absorbs - so w_MN alone moves and w_NB/w_FP are held.
+    absorbs - so w_NB is held and the two channels that carry meaning move:
 
-    The sweep is log-spaced because w_MN is a scale parameter: perceptually
-    even steps are multiplicative, not additive. Keeping `mn_min` above zero
-    also sidesteps vanilla's w_MN = 0 endpoint, which is at infinite
-    log-ratio distance and so has no place on a continuous sweep.
+      w_MN, the attractive/global channel, sweeping mn_max (pull the global
+      skeleton taut) to mn_min (let the local neighbor term refine detail);
 
-    Anchored on cos rather than sin so a run opens at `mn_max` - global
-    structure first, as vanilla does - rather than starting mid-sweep.
+      w_FP, the repulsive channel, sweeping fp_max (spread and untangle) to
+      fp_min (let attraction re-condense). Held at 1.0 by default, i.e. off,
+      so the default is the attraction-only sweep.
+
+    `fp_phase` is in cycles and defaults to 0.5 - antiphase, so repulsion
+    troughs exactly when global attraction peaks. In phase the two would
+    partly cancel; in antiphase the condense and expand halves reinforce.
     """
     if period <= 0:
         raise ValueError(f"schedule period must be positive, got {period}")
-    if mn_min <= 0 or mn_max <= 0:
-        raise ValueError(f"log-spaced w_MN bounds must be positive, got mn_min={mn_min}, mn_max={mn_max}")
 
     t = np.arange(sum(num_iters))
-    u = (1 + np.cos(2 * np.pi * t / period)) / 2  # 1 = global, 0 = local
-    w_MN = np.exp((1 - u) * np.log(mn_min) + u * np.log(mn_max))
-    return np.column_stack([w_MN, np.full_like(w_MN, 2.0), np.full_like(w_MN, 1.0)])
+    w_MN = _log_sweep(t, period, mn_min, mn_max, 0.0, "w_MN")
+    w_FP = _log_sweep(t, period, fp_min, fp_max, fp_phase, "w_FP")
+    return np.column_stack([w_MN, np.full_like(w_MN, 2.0), w_FP])
 
 
-PRESETS = {"vanilla": _vanilla, "cycle": _cycle}
+def _breathe(num_iters, period=100, mn_min=3.0, mn_max=3.0,
+             fp_min=0.2, fp_max=5.0, fp_phase=0.0):
+    """The repulsive twin of `cycle`: w_FP sweeps while w_MN is held.
+
+    Same builder, different defaults. Repulsion is the visually legible
+    channel - an inhale where the embedding spreads and untangles, an exhale
+    where attraction re-condenses it - whereas cycling attraction alone
+    changes structure without moving the extent much, since Adam absorbs a
+    good deal of the magnitude change.
+
+    w_MN is held at 3.0, the value vanilla settles on for phases 2-3, so the
+    attractive side stays at a sane baseline rather than being switched off.
+    `fp_phase` is 0 here (not antiphase) because with w_MN held there is
+    nothing to be out of phase with, and 0 opens the run spread out.
+    """
+    return _cycle(num_iters, period=period, mn_min=mn_min, mn_max=mn_max,
+                  fp_min=fp_min, fp_max=fp_max, fp_phase=fp_phase)
+
+
+PRESETS = {"vanilla": _vanilla, "cycle": _cycle, "breathe": _breathe}
+
+
+def preset_defaults(preset):
+    """A preset's own knob defaults, read off its builder's signature.
+
+    Each preset defines the *shape* of a schedule through these - `breathe`
+    holds w_MN and sweeps w_FP purely by defaulting them that way - so they
+    can't be duplicated in DEFAULT_CONFIG without the config silently
+    overriding every preset back into the same shape. DEFAULT_CONFIG holds
+    None for each knob instead, meaning "whatever this preset wants".
+    """
+    if preset not in PRESETS:
+        raise ValueError(f"unknown schedule preset {preset!r}; valid presets: {', '.join(sorted(PRESETS))}")
+    return {
+        name: p.default
+        for name, p in inspect.signature(PRESETS[preset]).parameters.items()
+        if p.default is not inspect.Parameter.empty
+    }
 
 
 def build_schedule(preset, num_iters, **params):
