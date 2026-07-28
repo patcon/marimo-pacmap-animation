@@ -10,7 +10,7 @@ See tasks/plan.md for full task details, acceptance criteria, and verification s
 - [ ] Tests pass; default behavior provably unchanged; dispatch seam ready for plotly/vispy
 
 ## Phase 2: fastplotlib backend
-- [ ] Task 3: offscreen still frame — scatter + orthographic camera → png (`--iter N`)
+- [x] Task 3: offscreen still frame — scatter + orthographic camera → png (`--iter N`)
 - [ ] Task 4: three pair-type edge layers, NaN-separated lines, per-edge RGBA alpha (v1/v2/v3 presets, far-pair checkpoints)
 - [ ] Task 5: overlay text, legend labels, weight-schedule strip with frame vline
 - [ ] Task 6: animation loop — snapshot frames → imageio-ffmpeg mp4; progress/ETA; `--iter` ranges; record speed comparison vs matplotlib
