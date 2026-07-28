@@ -5,13 +5,18 @@ from .config import build_config, parse_args, resolve_focus_label
 from .data import load_mnist
 from .fit import fit_trace
 from .paths import param_tag, resolve_output_dir, unique_path
-from .render import render_animation, render_frame
+from .render import RENDERER_FILE_MARKERS, render_animation, render_frame
 
 
 def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
     """Fit once, then render one output per (iter_item, out_path) pair in
     iter_out_paths - iter_item is None (full range), an int (single-iteration
     png), or a (start, end) tuple (range mp4)."""
+    if cfg["renderer"] == "fastplotlib" and cfg["n_components"] == 3:
+        raise ValueError(
+            "--renderer fastplotlib does not support --n-components 3 yet "
+            "(see tasks/plan.md Task 7); use --renderer matplotlib for 3D"
+        )
     trace, pair_neighbors, pair_MN, pair_FP_history = fit_trace(
         X,
         algorithm,
@@ -39,6 +44,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         line_alpha=cfg["line_alpha"],
         n_components=cfg["n_components"],
         rotate=cfg["rotate"],
+        renderer=cfg["renderer"],
     )
 
     results = []
@@ -91,12 +97,15 @@ def main(argv=None):
     # still needs a filename marker so a 2D and 3D run with otherwise
     # identical params never collide via unique_path()'s _1/_2 fallback.
     dim_marker = "_3d" if cfg["n_components"] == 3 else ""
+    # Same idea for the renderer: a marker (e.g. _fpl) rather than a tag-slug
+    # entry, so backend-comparison runs land side by side in one directory.
+    renderer_marker = RENDERER_FILE_MARKERS[cfg["renderer"]]
 
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
     out_paths = {
         a: [
-            (iter_item, unique_path(output_dir / f"{a}_mnist{dim_marker}{suffix}.{ext}"))
+            (iter_item, unique_path(output_dir / f"{a}_mnist{dim_marker}{renderer_marker}{suffix}.{ext}"))
             for iter_item in iter_items
             for suffix, ext in [_suffix_ext(iter_item)]
         ]

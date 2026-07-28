@@ -228,7 +228,7 @@ def _build_renderer_3d(
     return fig, update, total, BG
 
 
-def render_animation(
+def _render_animation_mpl(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     out_path, n_lines=150, step=3, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
@@ -281,7 +281,7 @@ def render_animation(
     return out_path
 
 
-def render_frame(
+def _render_frame_mpl(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
     out_path, frame, n_lines=150, title_prefix="",
     point_size=5, point_alpha=1.0,
@@ -317,3 +317,47 @@ def render_frame(
     plt.close(fig)
     print("rendered %s in %.0fs" % (out_path, time.time() - t0))
     return out_path
+
+def _backend_matplotlib():
+    return {"animation": _render_animation_mpl, "frame": _render_frame_mpl}
+
+
+def _backend_fastplotlib():
+    raise NotImplementedError(
+        "the fastplotlib renderer is not implemented yet (see tasks/plan.md)"
+    )
+
+
+# Renderer registry: name -> zero-arg factory returning {"animation": fn,
+# "frame": fn}. The factory indirection lets backends with heavy or optional
+# imports (fastplotlib) resolve lazily, only when actually selected. Adding a
+# backend = write its module, add an entry here, extend --renderer's choices
+# in config.py, and give it a RENDERER_FILE_MARKERS entry.
+RENDERERS = {
+    "matplotlib": _backend_matplotlib,
+    "fastplotlib": _backend_fastplotlib,
+}
+
+# Filename marker per renderer (like n_components' _3d marker), so runs of
+# different backends with otherwise identical params land side by side in one
+# directory without colliding via unique_path()'s _1/_2 fallback.
+RENDERER_FILE_MARKERS = {
+    "matplotlib": "",
+    "fastplotlib": "_fpl",
+}
+
+
+def get_backend(renderer):
+    if renderer not in RENDERERS:
+        raise ValueError(f"unknown renderer {renderer!r}: expected one of {sorted(RENDERERS)}")
+    return RENDERERS[renderer]()
+
+
+def render_animation(*args, renderer="matplotlib", **kwargs):
+    """Render an iteration range as an mp4 via the selected backend."""
+    return get_backend(renderer)["animation"](*args, **kwargs)
+
+
+def render_frame(*args, renderer="matplotlib", **kwargs):
+    """Render a single iteration as a png via the selected backend."""
+    return get_backend(renderer)["frame"](*args, **kwargs)
