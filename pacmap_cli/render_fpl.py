@@ -19,6 +19,7 @@ import time
 import numpy as np
 
 from .fp_history import checkpoint_index_for_frame
+from .overlay import compute_overlay_text
 from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
 
 _INSTALL_HINT = (
@@ -108,25 +109,31 @@ def _build_renderer_fpl(
     BG = "#0d0d10"
     NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
-    # Same logical size as the matplotlib figure (7x8in at 110dpi). The
-    # exported array may come back at an integer multiple (the canvas's
+    # Same logical size as the matplotlib figure (7x8in at 110dpi), with the
+    # same two-region layout: main plot on top, weight-schedule strip along
+    # the bottom (fractional rects mirror the matplotlib add_axes boxes).
+    # The exported array may come back at an integer multiple (the canvas's
     # pixel ratio); consumers must read the actual exported shape rather
     # than assume this size.
-    fig = fpl.Figure(size=(770, 880), canvas="offscreen")
+    fig = fpl.Figure(
+        rects=[(0.02, 0.03, 0.96, 0.83), (0.09, 0.86, 0.82, 0.12)],
+        size=(770, 880), canvas="offscreen",
+    )
     # pygfx supersamples at pixel_ratio 2 by default, which quadruples the
     # pixels snapshotted and encoded per frame; ratio 1 matches matplotlib's
     # 770x880 output exactly (materials still shader-antialias) and roughly
     # halves the per-frame cost.
     fig.renderer.pixel_ratio = 1
-    sub = fig[0, 0]
-    sub.background_color = (BG,)  # tuple: the setter iterates (gradient corners)
-    sub.axes.visible = False
-    sub.title = ""
-    # The Frame reserves hardcoded strips for the subplot title (top) and
-    # resize handle (bottom) that render in the frame plane's own color;
-    # recolor the plane to BG and hide the handle so they disappear.
-    sub.frame.plane.material.color = BG
-    sub.frame.resize_handle.visible = False
+    sub, subw = fig[0], fig[1]
+    for s in (sub, subw):
+        s.background_color = (BG,)  # tuple: the setter iterates (gradient corners)
+        s.axes.visible = False
+        s.title = ""
+        # The Frame reserves hardcoded strips for the subplot title (top) and
+        # resize handle (bottom) that render in the frame plane's own color;
+        # recolor the plane to BG and hide the handle so they disappear.
+        s.frame.plane.material.color = BG
+        s.frame.resize_handle.visible = False
 
     dim = trace.shape[2]
     # Edge layers added before the scatter so points draw on top (render
@@ -150,7 +157,58 @@ def _build_renderer_fpl(
     )
     scat.colors[:, -1] = point_alpha
 
+    from fastplotlib.graphics import TextGraphic
+
+    # Overlay text lives in the main subplot's top dock and the pair-type
+    # legend in its bottom dock: docks are separate plot areas with their own
+    # static cameras, so the text stays pinned regardless of the main
+    # camera's per-frame framing. Both dock cameras are fixed to a unit rect
+    # after fig.show() (which can rescale cameras) so offsets are fractions.
+    dock_top, dock_bot = sub.docks["top"], sub.docks["bottom"]
+    dock_top.size = 72  # four v2 overlay lines at font_size 12 need ~68px
+    dock_bot.size = 24
+    # center=False everywhere text is added: centering calls
+    # camera.show_object() on the graphic, and screen-space text has no
+    # bounding sphere for it to frame (pygfx raises ValueError).
+    title = TextGraphic("", font_size=12, face_color="w", anchor="top-left", offset=(0.005, 0.92, 0))
+    dock_top.add_graphic(title, center=False)
+    for x, label, color in ((0.005, "neighbour", NB_COLOR), (0.12, "mid-near", MN_COLOR), (0.23, "further", FP_COLOR)):
+        dock_bot.add_graphic(TextGraphic(label, font_size=11, face_color=color, anchor="middle-left", offset=(x, 0.5, 0)), center=False)
+
+    # Weight-schedule strip: the three log-weight curves, phase boundaries,
+    # a moving current-frame cursor, and the axis label.
+    it = np.arange(total + 1, dtype=np.float32)
+    Wlog = np.log10(W + 1).astype(np.float32)
+    for j, c in enumerate((MN_COLOR, NB_COLOR, FP_COLOR)):
+        subw.add_line(np.column_stack([it, Wlog[:, j]]), thickness=1.4, colors=c)
+    ylo, yhi = float(Wlog.min()), float(Wlog.max())
+    yrange = (yhi - ylo) or 1.0
+    for b in (num_iters[0], num_iters[0] + num_iters[1]):
+        subw.add_line(np.array([[b, ylo], [b, yhi]], dtype=np.float32), thickness=0.8, colors="#555555")
+    vline = subw.add_line(np.array([[0, ylo], [0, yhi]], dtype=np.float32), thickness=1.2, colors="w")
+
     fig.show()  # required once to initialize the render pipeline
+
+    subw.add_graphic(TextGraphic(
+        "iteration  (log weight)", font_size=10, face_color="#888888",
+        anchor="top-center", offset=(total / 2, ylo - 0.25 * yrange, 0),
+    ), center=False)
+
+    # Static cameras, set after show() so nothing rescales them: unit rect
+    # for the text docks, data-extent rect (with label room below) for the
+    # weight strip.
+    unit_state = {
+        "position": np.array([0.5, 0.5, 0.0]), "width": 1.0, "height": 1.0,
+        "zoom": 1.0, "maintain_aspect": False, "fov": 0.0,
+    }
+    dock_top.camera.set_state(unit_state)
+    dock_bot.camera.set_state(unit_state)
+    y_view_lo, y_view_hi = ylo - 0.6 * yrange, yhi + 0.1 * yrange
+    subw.camera.set_state({
+        "position": np.array([total / 2, (y_view_lo + y_view_hi) / 2, 0.0]),
+        "width": total * 1.02, "height": y_view_hi - y_view_lo,
+        "zoom": 1.0, "maintain_aspect": False, "fov": 0.0,
+    })
 
     def apply_edges(line, base_rgba, Y, P, alpha):
         line.data[:, :dim] = edge_segments(Y, P)
@@ -203,6 +261,9 @@ def _build_renderer_fpl(
         apply_edges(lc_mn, mn_rgba, Y, PM, a_mn)
         apply_edges(lc_fp, fp_rgba, Y, PF, a_fp)
         set_camera(f)
+        ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
+        title.text = compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset)
+        vline.data[:, 0] = f
         return ()
 
     return fig, update, total, BG

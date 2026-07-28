@@ -154,10 +154,11 @@ def _regions(png_path):
 
     img = np.asarray(Image.open(png_path).convert("RGB"))
     h = img.shape[0]
-    return img[: int(h * 0.06)], img[int(h * 0.06): int(h * 0.84)], img[int(h * 0.84):]
+    # Top strip covers the figure margin (~3%) plus the main subplot's 60px
+    # top dock, where the overlay title text renders.
+    return img[: int(h * 0.13)], img[int(h * 0.13): int(h * 0.84)], img[int(h * 0.84):]
 
 
-@pytest.mark.skip(reason="Task 5 (overlay/legend/weight strip) deferred until after animation + 3D land")
 @requires_fpl
 def test_render_frame_fpl_overlay_text_present_and_updates(tmp_path):
     # Render the SAME frame with the two overlay presets: the scatter and
@@ -180,7 +181,6 @@ def test_render_frame_fpl_overlay_text_present_and_updates(tmp_path):
     assert not np.array_equal(tops["v1"], tops["v2"])
 
 
-@pytest.mark.skip(reason="Task 5 (overlay/legend/weight strip) deferred until after animation + 3D land")
 @requires_fpl
 def test_render_frame_fpl_weight_strip_present_and_cursor_moves(tmp_path):
     inputs = synthetic_render_inputs()
@@ -320,7 +320,7 @@ def test_render_frame_fpl_3d_rotate_changes_view_angle():
             n_lines=5, rotate=rotate, **inputs,
         )
         update(3)
-        positions[rotate] = fig[0, 0].camera.get_state()["position"].copy()
+        positions[rotate] = fig[0].camera.get_state()["position"].copy()
     assert not np.allclose(positions[False], positions[True])
 
 
