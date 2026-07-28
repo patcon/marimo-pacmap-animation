@@ -47,6 +47,19 @@ def _import_fastplotlib():
     return fpl
 
 
+# Depth-sorting toggles (code-level only - deliberately not CLI/config flags).
+# Points and edges both render with `depth_write = False` so semi-transparent
+# geometry alpha-blends instead of depth-culling; the GPU then composites them
+# in buffer order, which is index order and unrelated to what is actually in
+# front. In 3D each frame therefore re-sorts the buffers back-to-front along
+# the view axis (painter's algorithm). Flip either flag off to get the raw
+# buffer-order behaviour back - useful for comparing renders or for ruling the
+# sort out as the cause of a rendering oddity. Both are no-ops in 2D, where
+# every vertex is coplanar and buffer order is already the right answer.
+DEPTH_SORT_POINTS = True
+DEPTH_SORT_EDGES = True
+
+
 def edge_segments(Y, P):
     """Vertex buffer drawing the (k, 2) index pairs `P` over embedding `Y` as
     k disjoint segments in a single line graphic: laid out [start, end, nan]
@@ -165,8 +178,13 @@ def _build_renderer_fpl(
     scat.colors[:, -1] = point_alpha
     # Same as the edges: without this, semi-transparent points depth-cull
     # each other, so a dense low-point-alpha cloud can't accumulate opacity
-    # the way matplotlib's does.
+    # the way matplotlib's does. The cost is that points then blend in buffer
+    # order rather than depth order, so in 3D `update()` sorts them
+    # back-to-front per frame (see sort_by_depth below); in 2D everything is
+    # coplanar and buffer order is the right answer anyway (it's what
+    # matplotlib's single scatter does too).
     scat.world_object.material.depth_write = False
+    point_rgba = np.array(scat.colors.value, dtype=np.float32)
 
     from fastplotlib.graphics import TextGraphic
 
@@ -221,10 +239,33 @@ def _build_renderer_fpl(
         "zoom": 1.0, "maintain_aspect": False, "fov": 0.0,
     })
 
-    def apply_edges(line, base_rgba, Y, P, alpha):
-        line.data[:, :dim] = edge_segments(Y, P)
-        base_rgba[:, 3] = edge_vertex_alphas(alpha, len(P), line_alpha)
+    def apply_edges(line, base_rgba, Y, P, alpha, direction):
+        segs = edge_segments(Y, P)
+        vert_alpha = edge_vertex_alphas(alpha, len(P), line_alpha)
+        if direction is not None and DEPTH_SORT_EDGES:
+            # Sort this layer's edges back-to-front by midpoint depth, in
+            # blocks of three vertices ([start, end, nan] per edge). This
+            # orders edges within a layer only; the three layers still
+            # composite in their fixed add order (further < mid-near <
+            # neighbour), which is what matplotlib's zorder does too.
+            order = np.argsort((Y[P[:, 0]] + Y[P[:, 1]]) @ direction)
+            segs = segs.reshape(len(P), 3, -1)[order].reshape(3 * len(P), -1)
+            vert_alpha = vert_alpha.reshape(len(P), 3)[order].ravel()
+        line.data[:, :dim] = segs
+        base_rgba[:, 3] = vert_alpha
         line.colors[:] = base_rgba
+
+    def view_direction(f):
+        """Unit vector from the frame's camera position toward the scene: the
+        3D camera sits at `center[f] + direction * 3L` looking back down it,
+        so a point's dot product with it grows as the point gets closer."""
+        azim = np.radians(-60 + (360 * f / total if rotate else 0))
+        elev = np.radians(20)
+        return np.array([
+            np.cos(elev) * np.cos(azim),
+            np.cos(elev) * np.sin(azim),
+            np.sin(elev),
+        ])
 
     def set_camera(f):
         L = float(r_s[f])
@@ -240,13 +281,7 @@ def _build_renderer_fpl(
         # matching matplotlib's elev=20/azim=-60 default (z-up). Azimuth
         # sweeps one revolution over the frame range when rotate is set.
         c = center[f].astype(np.float64)
-        azim = np.radians(-60 + (360 * f / total if rotate else 0))
-        elev = np.radians(20)
-        direction = np.array([
-            np.cos(elev) * np.cos(azim),
-            np.cos(elev) * np.sin(azim),
-            np.sin(elev),
-        ])
+        direction = view_direction(f)
         sub.camera.set_state({
             "position": c + direction * 3 * L,
             "width": 2 * L, "height": 2 * L,
@@ -267,10 +302,19 @@ def _build_renderer_fpl(
                 w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
         else:
             a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
-        scat.data[:, :dim] = Y
-        apply_edges(lc_nb, nb_rgba, Y, PN, a_nb)
-        apply_edges(lc_mn, mn_rgba, Y, PM, a_mn)
-        apply_edges(lc_fp, fp_rgba, Y, PF, a_fp)
+        direction = view_direction(f) if dim == 3 else None
+        if direction is not None and DEPTH_SORT_POINTS:
+            # Reorder the point buffer back-to-front so a point passing behind
+            # another is drawn under it instead of over it. The colors have to
+            # be permuted in lockstep, since they're per-index too.
+            order = np.argsort(Y @ direction)
+            scat.data[:, :dim] = Y[order]
+            scat.colors[:] = point_rgba[order]
+        else:
+            scat.data[:, :dim] = Y
+        apply_edges(lc_nb, nb_rgba, Y, PN, a_nb, direction)
+        apply_edges(lc_mn, mn_rgba, Y, PM, a_mn, direction)
+        apply_edges(lc_fp, fp_rgba, Y, PF, a_fp, direction)
         set_camera(f)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.text = compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset)

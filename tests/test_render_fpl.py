@@ -344,6 +344,83 @@ def test_render_fpl_transparent_graphics_do_not_write_depth(n_components):
         assert g.world_object.material.depth_write is False
 
 
+@requires_fpl
+def test_render_fpl_3d_sorts_points_back_to_front():
+    # Points don't write depth, so they blend in buffer order. In 3D that
+    # order must be re-sorted per frame along the view axis, otherwise a
+    # point passing behind another draws on top of it.
+    from pacmap_cli import render_fpl
+
+    inputs = synthetic_render_inputs(n_components=3)
+    fig, update, total, BG = render_fpl._build_renderer_fpl(
+        n_lines=5, rotate=True, **inputs,
+    )
+    trace = inputs["trace"]
+    scat, = [g for g in fig[0].graphics if type(g).__name__ == "ScatterGraphic"]
+    for f in (1, 4):
+        update(f)
+        drawn = np.asarray(scat.data.value)[:, :3]
+        # Same point set as the trace frame, just permuted...
+        assert np.allclose(np.sort(drawn, axis=0), np.sort(trace[f], axis=0))
+        # ...into ascending depth (farthest from the camera drawn first).
+        depth = drawn @ render_fpl_view_direction(f, total)
+        assert np.all(np.diff(depth) >= 0)
+
+
+@requires_fpl
+def test_render_fpl_3d_sorts_edges_back_to_front():
+    # Same problem as the points, one layer at a time: each edge layer's
+    # segments must composite back-to-front by midpoint depth.
+    from pacmap_cli import render_fpl
+
+    inputs = synthetic_render_inputs(n_components=3)
+    fig, update, total, BG = render_fpl._build_renderer_fpl(
+        n_lines=5, rotate=True, **inputs,
+    )
+    lines = [g for g in fig[0].graphics if type(g).__name__ == "LineGraphic"]
+    assert len(lines) == 3
+    for f in (1, 4):
+        update(f)
+        for line in lines:
+            verts = np.asarray(line.data.value)[:, :3]
+            mid = (verts[0::3] + verts[1::3]) / 2  # [start, end, nan] per edge
+            depth = mid @ render_fpl_view_direction(f, total)
+            assert np.all(np.diff(depth) >= -1e-5)
+
+
+@requires_fpl
+@pytest.mark.parametrize("flag", ["DEPTH_SORT_POINTS", "DEPTH_SORT_EDGES"])
+def test_render_fpl_depth_sort_flags_disable_sorting(monkeypatch, flag):
+    # The toggles must actually reach the update path, so a render can be
+    # compared against the raw buffer-order behaviour.
+    from pacmap_cli import render_fpl
+
+    monkeypatch.setattr(render_fpl, flag, False)
+    inputs = synthetic_render_inputs(n_components=3)
+    fig, update, total, BG = render_fpl._build_renderer_fpl(
+        n_lines=5, rotate=True, **inputs,
+    )
+    update(4)
+    if flag == "DEPTH_SORT_POINTS":
+        scat, = [g for g in fig[0].graphics if type(g).__name__ == "ScatterGraphic"]
+        drawn = np.asarray(scat.data.value)[:, :3]
+        assert np.allclose(drawn, inputs["trace"][4])  # untouched trace order
+    else:
+        line = [g for g in fig[0].graphics if type(g).__name__ == "LineGraphic"][0]
+        verts = np.asarray(line.data.value)[:, :3]
+        mid = (verts[0::3] + verts[1::3]) / 2
+        depth = mid @ render_fpl_view_direction(4, total)
+        assert not np.all(np.diff(depth) >= -1e-5)
+
+
+def render_fpl_view_direction(f, total, elev=20, azim0=-60):
+    """Mirror of the backend's camera direction, for the depth-sort test."""
+    azim, elev = np.radians(azim0 + 360 * f / total), np.radians(elev)
+    return np.array([
+        np.cos(elev) * np.cos(azim), np.cos(elev) * np.sin(azim), np.sin(elev),
+    ])
+
+
 def test_run_algorithm_no_longer_rejects_fastplotlib_3d(monkeypatch):
     # The Task 1 guard must be gone: with a monkeypatched fit and renderer,
     # a fastplotlib+3D run reaches rendering rather than raising.
