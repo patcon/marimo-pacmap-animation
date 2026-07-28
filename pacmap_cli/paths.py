@@ -45,6 +45,10 @@ TAG_PARAMS = [
     ("fp_ratio", "fpr"),
     ("low_dist_thres", "ldt"),
     ("num_iters", "iters"),
+    ("schedule_preset", "sched"),
+    ("schedule_period", "period"),
+    ("schedule_mn_min", "mnmin"),
+    ("schedule_mn_max", "mnmax"),
     ("seed", "seed"),
     ("n_lines", "nlines"),
     ("step", "step"),
@@ -63,7 +67,15 @@ def param_tag(cfg):
     """Slug of the params in `cfg` that differ from DEFAULT_CONFIG, e.g.
     "nn5_mnr0.8". Falls back to "default" if nothing differs."""
     parts = []
+    # The cycle knobs mean nothing under the vanilla preset (which doesn't
+    # patch the fit at all), so they shouldn't split a comparison folder in
+    # two - the same rule the cache key applies to them.
+    skip = set() if cfg["schedule_preset"] != "vanilla" else {
+        "schedule_period", "schedule_mn_min", "schedule_mn_max",
+    }
     for key, abbr in TAG_PARAMS:
+        if key in skip:
+            continue
         val, default = cfg[key], DEFAULT_CONFIG[key]
         if key == "num_iters":
             val, default = tuple(val), tuple(default)

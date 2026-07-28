@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-5 done; next up Task 6.
+Status: in progress — Tasks 1-6 done; next up Task 7.
 
 ## Goal
 
@@ -210,7 +210,7 @@ vanilla with otherwise-identical params.
 *Depends on:* Tasks 1–3. *Files:* `pacmap_cli/fit.py`, `tests/test_fit_cache.py`,
 `tests/test_schedule.py`. *Scope:* M.
 
-### Task 6 — `TAG_PARAMS`
+### Task 6 — `TAG_PARAMS` — **DONE**
 Add `("schedule_preset", "sched")`, `("schedule_period", "period")`,
 `("schedule_mn_min", "mnmin")`, `("schedule_mn_max", "mnmax")` to `paths.py`. Skip the
 three knob entries when `cfg["schedule_preset"] == "vanilla"` so unused knobs can't leak
