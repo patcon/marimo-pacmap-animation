@@ -8,9 +8,12 @@
 # ]
 # ///
 # PEP 723 has no optional-dependency groups, so the fastplotlib renderer's
-# deps (see the `fastplotlib` extra in pyproject.toml) are not listed above;
-# for standalone script runs add them via
-#     uv run --with fastplotlib==0.6.1 --with imageio-ffmpeg==0.6.0 ...
+# deps (see the `fastplotlib` extra in pyproject.toml) are not listed above.
+# Extras also don't apply to `uv run <script>.py` runs, so to use them go
+# through the project env via `python`:
+#     uv run --extra fastplotlib python pacmap_animation_mnist.cli.py ...
+# or, for a standalone script run, add the deps explicitly:
+#     uv run --with fastplotlib==0.6.1 --with imageio-ffmpeg==0.6.0 pacmap_animation_mnist.cli.py ...
 """Render a PaCMAP / LocalMAP optimization animation on MNIST from the CLI.
 
     uv run pacmap_animation_mnist.cli.py --algorithm both --n 5000 --output-dir out/

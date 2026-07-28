@@ -18,12 +18,14 @@ import time
 
 import numpy as np
 
-from .pairs import count_drawn, subsample_pairs, subsample_pairs_indices
+from .fp_history import checkpoint_index_for_frame
+from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
 
 _INSTALL_HINT = (
     "--renderer fastplotlib requires the optional fastplotlib dependencies.\n"
-    "Install them by running with the extra enabled, e.g.:\n"
-    "    uv run --extra fastplotlib pacmap_animation_mnist.cli.py --renderer fastplotlib ...\n"
+    "Run via the project env with the extra enabled (extras don't apply to\n"
+    "PEP 723 script runs, so invoke through `python`):\n"
+    "    uv run --extra fastplotlib python pacmap_animation_mnist.cli.py --renderer fastplotlib ...\n"
     "or, when running the script standalone:\n"
     "    uv run --with fastplotlib==0.6.1 --with imageio-ffmpeg==0.6.0 pacmap_animation_mnist.cli.py ..."
 )
@@ -42,6 +44,28 @@ def _import_fastplotlib():
     except ImportError as exc:
         raise SystemExit(_INSTALL_HINT) from exc
     return fpl
+
+
+def edge_segments(Y, P):
+    """Vertex buffer drawing the (k, 2) index pairs `P` over embedding `Y` as
+    k disjoint segments in a single line graphic: laid out [start, end, nan]
+    per edge, (3k, 2) float32 - pygfx treats nan vertices as breaks, which is
+    far cheaper than one graphic per edge."""
+    buf = np.full((3 * len(P), Y.shape[1]), np.nan, dtype=np.float32)
+    buf[0::3] = Y[P[:, 0]]
+    buf[1::3] = Y[P[:, 1]]
+    return buf
+
+
+def edge_vertex_alphas(alpha, n_edges, line_alpha):
+    """Expand a scalar or per-edge alpha into the (3 * n_edges,) per-vertex
+    alpha column for an edge_segments() buffer, scaled by line_alpha and
+    clipped to [0, 1] - the fastplotlib analogue of the matplotlib backend's
+    apply_alpha()."""
+    alpha = np.clip(np.asarray(alpha, dtype=np.float32) * line_alpha, 0.0, 1.0)
+    if alpha.ndim == 0:
+        return np.full(3 * n_edges, float(alpha), dtype=np.float32)
+    return np.repeat(alpha, 3)
 
 
 def _build_renderer_fpl(
@@ -75,6 +99,7 @@ def _build_renderer_fpl(
         f"further={counts['edges_further']})"
     )
     BG = "#0d0d10"
+    NB_COLOR, MN_COLOR, FP_COLOR = "#4da6ff", "#ffa53d", "#ff4d4d"
 
     # Same logical size as the matplotlib figure (7x8in at 110dpi). The
     # exported array may come back at an integer multiple (the canvas's
@@ -91,6 +116,21 @@ def _build_renderer_fpl(
     sub.frame.plane.material.color = BG
     sub.frame.resize_handle.visible = False
 
+    # Edge layers added before the scatter so points draw on top (render
+    # order follows add order), and back-to-front within themselves to match
+    # the matplotlib zorder: further < mid-near < neighbour.
+    Y0 = trace[0][:, :2]
+    from pygfx.utils import Color
+
+    def add_edges(P, color, thickness):
+        line = sub.add_line(edge_segments(Y0, P), thickness=thickness, colors=color)
+        base = np.tile(np.asarray(Color(color)), (3 * len(P), 1)).astype(np.float32)
+        return line, base
+
+    lc_fp, fp_rgba = add_edges(checkpoint_PF[0], FP_COLOR, 1.0)
+    lc_mn, mn_rgba = add_edges(PM, MN_COLOR, 1.2)
+    lc_nb, nb_rgba = add_edges(PN, NB_COLOR, 1.2)
+
     scat = sub.add_scatter(
         np.ascontiguousarray(trace[0][:, :2], dtype=np.float32),
         cmap="tab10", cmap_transform=y, sizes=point_size,
@@ -99,9 +139,24 @@ def _build_renderer_fpl(
 
     fig.show()  # required once to initialize the render pipeline
 
+    def apply_edges(line, base_rgba, Y, P, alpha):
+        line.data[:, :2] = edge_segments(Y, P)
+        base_rgba[:, 3] = edge_vertex_alphas(alpha, len(P), line_alpha)
+        line.colors[:] = base_rgba
+
     def update(f):
-        Y = trace[f]
-        scat.data[:, :2] = Y[:, :2]
+        Y = trace[f][:, :2]
+        w_MN, w_NB, w_FP = W[f]
+        PF = checkpoint_PF[checkpoint_index_for_frame(f, checkpoint_frames)]
+        if edge_style_preset == "v3":
+            a_nb, a_mn, a_fp = compute_edge_alphas(
+                w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
+        else:
+            a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
+        scat.data[:, :2] = Y
+        apply_edges(lc_nb, nb_rgba, Y, PN, a_nb)
+        apply_edges(lc_mn, mn_rgba, Y, PM, a_mn)
+        apply_edges(lc_fp, fp_rgba, Y, PF, a_fp)
         L = float(r_s[f])
         cx, cy = (float(c) for c in center[f][:2])
         sub.camera.set_state({
