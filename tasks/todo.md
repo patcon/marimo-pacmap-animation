@@ -7,7 +7,7 @@ See tasks/plan.md for full task details, acceptance criteria, and verification s
 - [x] Task 2: optional pinned fastplotlib/imageio-ffmpeg dependency group + lazy-import guard with friendly missing-dep error
 
 ### Checkpoint: Foundation
-- [ ] Tests pass; default behavior provably unchanged; dispatch seam ready for plotly/vispy
+- [x] Tests pass; default behavior provably unchanged; dispatch seam ready for plotly/vispy
 
 ## Phase 2: fastplotlib backend
 - [x] Task 3: offscreen still frame — scatter + orthographic camera → png (`--iter N`)
@@ -17,11 +17,11 @@ See tasks/plan.md for full task details, acceptance criteria, and verification s
 - [x] Task 5 (deferred to last per user 2026-07-28): overlay text, legend labels, weight-schedule strip with frame vline
 
 ### Checkpoint: Backend complete
-- [ ] Side-by-side visual sign-off (2D + 3D); speed numbers recorded
+- [x] Side-by-side visual sign-off (2D + 3D); speed numbers recorded (~2.6x: 12.4s vs 32.6s render-only, 5000 pts, 151 frames)
 
 ## Phase 3: Tests, CI, docs
 - [x] Task 8: GPU-free tests (parsing, dispatch, missing-dep error) + skipif guards for canvas tests; CI stays green
-- [ ] Task 9: CLAUDE.md "Renderer backends" section + flag docs + TODO.md updates
+- [x] Task 9: CLAUDE.md "Renderer backends" section + flag docs + TODO.md updates
 
 ### Checkpoint: Complete
-- [ ] All acceptance criteria met; CI green; ready for review
+- [x] All acceptance criteria met; CI green (129 passed / 14 skipped in no-extra env); ready for review
