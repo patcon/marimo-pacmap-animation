@@ -21,6 +21,8 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         num_iters=cfg["num_iters"],
         seed=cfg["seed"],
         n_components=cfg["n_components"],
+        low_dist_thres=cfg["low_dist_thres"],
+        cache_dir=cfg["cache_dir"] if cfg["cache"] else None,
     )
     W = weight_schedule(cfg["num_iters"])
     center, r_s = camera_path(trace, y=y, focus_label=cfg["focus_label"], fixed=cfg["fixed_camera"], zoom=cfg["zoom"])

@@ -2,4 +2,5 @@
 .agents/
 __pycache__/
 outputs/
+.cache/
 .venv/

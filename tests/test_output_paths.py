@@ -48,6 +48,19 @@ def test_param_tag_n_none_renders_as_all():
     assert cli.param_tag(cfg) == "nall"
 
 
+def test_param_tag_includes_low_dist_thres():
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["low_dist_thres"] = 3.0
+    assert cli.param_tag(cfg) == "ldt3.0"
+
+
+def test_param_tag_excludes_cache_settings():
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["cache"] = False
+    cfg["cache_dir"] = "somewhere"
+    assert cli.param_tag(cfg) == "default"
+
+
 def test_param_tag_num_iters_joined_with_dashes():
     cfg = dict(cli.DEFAULT_CONFIG)
     cfg["num_iters"] = [50, 50, 100]

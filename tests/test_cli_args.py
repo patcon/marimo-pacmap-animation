@@ -151,3 +151,44 @@ def test_resolve_focus_label_prompts_and_validates_against_present_labels(monkey
     replies = iter(["9", "not-a-number", "1"])
     monkeypatch.setattr("builtins.input", lambda _: next(replies))
     assert cli.resolve_focus_label("__prompt__", y=y) == 1
+
+
+def test_build_config_caching_is_on_by_default():
+    cfg = cli.build_config(cli.parse_args([]))
+    assert cfg["cache"] is True
+    assert cfg["cache_dir"] == ".cache/fits"
+
+
+def test_build_config_no_cache_flag_disables_caching():
+    cfg = cli.build_config(cli.parse_args(["--no-cache"]))
+    assert cfg["cache"] is False
+
+
+def test_build_config_cache_dir_flag_overrides_default():
+    cfg = cli.build_config(cli.parse_args(["--cache-dir", "/tmp/fits"]))
+    assert cfg["cache_dir"] == "/tmp/fits"
+    assert cfg["cache"] is True
+
+
+def test_build_config_cache_can_be_disabled_from_a_config_file(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"cache": False}))
+    cfg = cli.build_config(cli.parse_args(["--config", str(config_path)]))
+    assert cfg["cache"] is False
+
+
+def test_build_config_low_dist_thres_defaults_to_pacmaps_own_default():
+    cfg = cli.build_config(cli.parse_args([]))
+    assert cfg["low_dist_thres"] == 10.0
+
+
+def test_build_config_low_dist_thres_flag_overrides_default():
+    cfg = cli.build_config(cli.parse_args(["--low-dist-thres", "3.5"]))
+    assert cfg["low_dist_thres"] == 3.5
+
+
+def test_build_config_low_dist_thres_cli_flag_wins_over_config_file(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"low_dist_thres": 7.0}))
+    cfg = cli.build_config(cli.parse_args(["--config", str(config_path), "--low-dist-thres", "2.0"]))
+    assert cfg["low_dist_thres"] == 2.0

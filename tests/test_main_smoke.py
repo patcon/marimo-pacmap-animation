@@ -103,6 +103,75 @@ def test_fit_trace_pacmap_has_single_checkpoint_fp_history(synthetic_mnist):
     assert pair_FP_history[0][0] == 0
 
 
+@pytest.fixture
+def reducer_kwargs_spy(monkeypatch):
+    """Records the kwargs fit_trace() constructs each reducer with, while
+    still running the real fit underneath."""
+    import pacmap
+
+    seen = {}
+
+    def spy(name):
+        real = getattr(pacmap, name)
+
+        def wrapper(**kwargs):
+            seen[name] = kwargs
+            return real(**kwargs)
+
+        monkeypatch.setattr(pacmap, name, wrapper)
+
+    spy("PaCMAP")
+    spy("LocalMAP")
+    return seen
+
+
+def test_fit_trace_passes_low_dist_thres_to_localmap(synthetic_mnist, reducer_kwargs_spy):
+    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+
+    cli.fit_trace(
+        X, "localmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
+        num_iters=(2, 2, 2), seed=0, low_dist_thres=3.5,
+    )
+
+    assert reducer_kwargs_spy["LocalMAP"]["low_dist_thres"] == 3.5
+
+
+def test_fit_trace_defaults_low_dist_thres_to_pacmaps_own_default(synthetic_mnist, reducer_kwargs_spy):
+    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+
+    cli.fit_trace(
+        X, "localmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
+        num_iters=(2, 2, 2), seed=0,
+    )
+
+    assert reducer_kwargs_spy["LocalMAP"]["low_dist_thres"] == 10.0
+
+
+def test_fit_trace_does_not_pass_low_dist_thres_to_pacmap(synthetic_mnist, reducer_kwargs_spy):
+    # PaCMAP.__init__ has no such param - passing it would be a TypeError, so
+    # the LocalMAP-only kwarg has to be dropped for the pacmap algorithm.
+    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+
+    cli.fit_trace(
+        X, "pacmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
+        num_iters=(2, 2, 2), seed=0, low_dist_thres=3.5,
+    )
+
+    assert "low_dist_thres" not in reducer_kwargs_spy["PaCMAP"]
+
+
+def test_low_dist_thres_changes_the_localmap_far_pair_graph(synthetic_mnist):
+    """The knob actually does something: a much tighter acceptance distance
+    yields a different resampled far-pair set from the default."""
+    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    kwargs = dict(n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0, num_iters=(5, 5, 25), seed=0)
+
+    *_, default_history = cli.fit_trace(X, "localmap", **kwargs, low_dist_thres=10.0)
+    *_, tight_history = cli.fit_trace(X, "localmap", **kwargs, low_dist_thres=0.01)
+
+    assert not np.array_equal(default_history[-1][1], tight_history[-1][1])
+
+
 def test_main_renders_png_for_n_components_3(tmp_path, synthetic_mnist):
     out_dir = tmp_path / "run"
     argv = [
@@ -204,6 +273,86 @@ def test_fit_trace_n_components_3_produces_3_column_trace(synthetic_mnist):
     )
 
     assert trace.shape == (sum(num_iters) + 1, 60, 3)
+
+
+def _cache_argv(out_dir, cache_dir, *extra):
+    return [
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-lines", "5",
+        "--iter", "3",
+        "--output-dir", str(out_dir),
+        *(["--cache-dir", str(cache_dir)] if cache_dir else []),
+        *extra,
+    ]
+
+
+def test_main_caches_the_fit_by_default(tmp_path, synthetic_mnist):
+    cache_dir = tmp_path / "fits"
+    cli.main(_cache_argv(tmp_path / "run", cache_dir))
+
+    assert len(list(cache_dir.glob("pacmap_*/trace.npy"))) == 1
+
+
+def test_main_default_cache_dir_is_dot_cache_fits(tmp_path, synthetic_mnist):
+    # conftest's isolate_cwd fixture puts us in a scratch cwd, so the real
+    # relative default is exercised without touching the repo.
+    from pathlib import Path
+
+    cli.main(_cache_argv(tmp_path / "run", None))
+
+    assert len(list(Path(".cache/fits").glob("pacmap_*/trace.npy"))) == 1
+
+
+def test_main_second_identical_run_does_not_refit(tmp_path, synthetic_mnist, monkeypatch):
+    cache_dir = tmp_path / "fits"
+    cli.main(_cache_argv(tmp_path / "run", cache_dir))
+
+    def boom(*args, **kwargs):
+        raise AssertionError("refit despite a warm cache")
+
+    monkeypatch.setattr(cli.fit, "_fit_uncached", boom)
+    cli.main(_cache_argv(tmp_path / "run2", cache_dir))
+
+    assert (tmp_path / "run2" / "pacmap_mnist_iter3.png").exists()
+
+
+def test_main_no_cache_flag_writes_no_cache_entry(tmp_path, synthetic_mnist):
+    cache_dir = tmp_path / "fits"
+    cli.main(_cache_argv(tmp_path / "run", cache_dir, "--no-cache"))
+
+    assert not cache_dir.exists()
+
+
+def test_main_no_cache_flag_still_refits_with_a_warm_cache(tmp_path, synthetic_mnist, monkeypatch):
+    cache_dir = tmp_path / "fits"
+    cli.main(_cache_argv(tmp_path / "run", cache_dir))
+
+    calls = []
+    real_fit = cli.fit._fit_uncached
+    monkeypatch.setattr(cli.fit, "_fit_uncached",
+                        lambda *a, **kw: (calls.append(1), real_fit(*a, **kw))[1])
+    cli.main(_cache_argv(tmp_path / "run2", cache_dir, "--no-cache"))
+
+    assert len(calls) == 1
+
+
+def test_main_changing_a_fit_param_adds_a_second_cache_entry(tmp_path, synthetic_mnist):
+    cache_dir = tmp_path / "fits"
+    cli.main(_cache_argv(tmp_path / "run", cache_dir))
+    cli.main(_cache_argv(tmp_path / "run2", cache_dir, "--seed", "7"))
+
+    assert len(list(cache_dir.glob("pacmap_*/trace.npy"))) == 2
+
+
+def test_main_low_dist_thres_reaches_the_localmap_fit(tmp_path, synthetic_mnist, reducer_kwargs_spy):
+    argv = _cache_argv(tmp_path / "run", tmp_path / "fits", "--low-dist-thres", "2.5")
+    argv[argv.index("pacmap")] = "localmap"
+    cli.main(argv)
+
+    assert reducer_kwargs_spy["LocalMAP"]["low_dist_thres"] == 2.5
 
 
 def test_main_renders_multiple_outputs_for_comma_separated_iter(tmp_path, synthetic_mnist):

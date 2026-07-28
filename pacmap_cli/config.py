@@ -11,6 +11,7 @@ DEFAULT_CONFIG = {
     "n_neighbors": 10,
     "mn_ratio": 0.5,
     "fp_ratio": 2.0,
+    "low_dist_thres": 10.0,    # LocalMAP only (ignored by PaCMAP): acceptance distance for the "local" further pairs it resamples every 10 iterations
     "num_iters": [100, 100, 250],
     "seed": 42,
     "n_lines": 150,
@@ -28,6 +29,8 @@ DEFAULT_CONFIG = {
     "focus_label": None,       # int -> camera tracks just that MNIST digit's cluster; "__prompt__" -> resolved interactively in main()
     "iter": None,              # None -> full-range video (default); otherwise a list of items (int -> single-iteration png, (start, end) tuple -> range video), one output rendered per item
     "renderer": "matplotlib",  # plotting backend; see RENDERERS in render.py
+    "cache": True,             # reuse an on-disk fit for identical data+params instead of refitting; see cache.py
+    "cache_dir": ".cache/fits",  # where cached fits live (gitignored); never evicted automatically
     "output_dir": "",          # "" -> outputs/; see resolve_output_dir()
 }
 
@@ -82,6 +85,11 @@ def parse_args(argv=None):
                     help=f"(default: {d['mn_ratio']})")
     p.add_argument("--fp-ratio", type=float, default=None,
                     help=f"(default: {d['fp_ratio']})")
+    p.add_argument("--low-dist-thres", type=float, default=None,
+                    help="LocalMAP only (ignored by PaCMAP): the acceptance distance for the "
+                         "'local' further pairs LocalMAP resamples every 10 iterations after "
+                         "iteration 200. Lower values only accept closer far pairs, changing "
+                         f"the green edges the phase-3 animation shows (default: {d['low_dist_thres']})")
     p.add_argument("--num-iters", type=str, default=None,
                     help=f"comma-separated PaCMAP phase lengths, e.g. 100,100,250 (default: {','.join(map(str, d['num_iters']))})")
     p.add_argument("--seed", type=int, default=None,
@@ -147,6 +155,13 @@ def parse_args(argv=None):
                          "offscreen on the GPU (requires the optional fastplotlib "
                          "dependencies) and marks output filenames with _fpl "
                          f"(default: {d['renderer']})")
+    p.add_argument("--no-cache", action="store_true",
+                    help="always refit instead of reusing (or writing) a cached fit for the "
+                         "same data and params")
+    p.add_argument("--cache-dir", type=str, default=None,
+                    help="where cached fits are stored. Entries are never evicted "
+                         "automatically - a trace is ~18MB at --n 5000 but ~250MB at --n all, "
+                         f"so clear it by hand when it grows (default: {d['cache_dir']})")
     p.add_argument("--output-dir", type=str, default=None,
                     help="output directory (default: outputs/). An absolute path, or one "
                          "starting with ./ or ../, is used as-is; any other relative path "
@@ -168,6 +183,7 @@ def build_config(args):
         "n_neighbors": args.n_neighbors,
         "mn_ratio": args.mn_ratio,
         "fp_ratio": args.fp_ratio,
+        "low_dist_thres": args.low_dist_thres,
         "num_iters": [int(x) for x in args.num_iters.split(",")] if args.num_iters else None,
         "seed": args.seed,
         "n_lines": parse_count_arg(args.n_lines) if args.n_lines is not None else None,
@@ -184,6 +200,10 @@ def build_config(args):
         "focus_label": args.focus_label,
         "iter": parse_iter_list(args.iter) if args.iter is not None else None,
         "renderer": args.renderer,
+        # store_true, so only its presence is meaningful: False must stay None
+        # here or it would override a config file's "cache": false with True.
+        "cache": False if args.no_cache else None,
+        "cache_dir": args.cache_dir,
         "output_dir": args.output_dir,
     }
     cfg.update({k: v for k, v in overrides.items() if v is not None})
