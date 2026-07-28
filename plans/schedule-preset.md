@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-7 done (feature usable end to end); next up Task 8 (docs).
+Status: complete — all 8 tasks done.
 
 ## Goal
 
@@ -242,7 +242,7 @@ producing an mp4, renderers untouched.
 *Depends on:* Tasks 1–5 (Task 6 independent). *Files:* `pacmap_cli/orchestrate.py`,
 `tests/test_main_smoke.py` or new `tests/test_orchestrate_schedule.py`. *Scope:* M.
 
-### Task 8 — documentation
+### Task 8 — documentation — **DONE**
 Update `CLAUDE.md`: amend mechanic #2 (the schedule is now *driven*, not merely
 replayed, when preset != vanilla; vanilla path unchanged), document the new flags,
 note the cache-key conditional, record the "vanilla is never patched" invariant, and add
