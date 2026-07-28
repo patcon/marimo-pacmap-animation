@@ -2,17 +2,56 @@
 
 import time
 
+from .cache import fit_key, load_fit, save_fit
 from .fp_history import capture_fp_history, fp_resample_iterations
 
 
-def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42, n_components=2):
+def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42, n_components=2,
+              low_dist_thres=10.0, cache_dir=None):
     """Run PaCMAP or LocalMAP, capturing the embedding at every iteration.
+
+    `low_dist_thres` is LocalMAP-only (ignored for PaCMAP): the acceptance
+    distance for the "local" far pairs it resamples every 10 iterations.
+
+    With a `cache_dir`, the result is read from / written to an on-disk cache
+    keyed by the data and these params (see cache.py); `cache_dir=None`
+    always refits and writes nothing.
 
     Returns `pair_FP_history`, a list of `(frame, pair_FP)` checkpoints
     sorted by ascending frame - `[(0, pair_FP)]` for PaCMAP (which never
     resamples FP) or a run where LocalMAP's phase 3 never triggers a
     resample, otherwise `[(0, initial), (frame_1, resample_1), ...]` for
     LocalMAP, one entry per resample event it actually performed."""
+    import pacmap
+
+    params = dict(
+        n_neighbors=n_neighbors, mn_ratio=mn_ratio, fp_ratio=fp_ratio,
+        num_iters=tuple(num_iters), seed=seed, n_components=n_components,
+        low_dist_thres=low_dist_thres,
+    )
+    # PaCMAP ignores low_dist_thres, so it must stay out of its key - otherwise
+    # varying the knob would needlessly refit the pacmap half of a `both` run.
+    key_params = {k: v for k, v in params.items() if algorithm == "localmap" or k != "low_dist_thres"}
+    key = None
+    if cache_dir is not None:
+        key = fit_key(X, {**key_params, "algorithm": algorithm, "pacmap_version": pacmap.__version__})
+        cached = load_fit(cache_dir, algorithm, key)
+        if cached is not None:
+            print(f"{algorithm}: cache hit ({key})")
+            return cached
+
+    result = _fit_uncached(X, algorithm, **params)
+
+    if cache_dir is not None:
+        path = save_fit(cache_dir, algorithm, key, {**key_params, "pacmap_version": pacmap.__version__}, result)
+        print(f"{algorithm}: cached fit -> {path}")
+    return result
+
+
+def _fit_uncached(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed, n_components,
+                  low_dist_thres):
+    """The fit itself. Split out from fit_trace() so the caching layer around
+    it can be tested (and bypassed) without running a real fit."""
     import pacmap
 
     reducer_cls = {"pacmap": pacmap.PaCMAP, "localmap": pacmap.LocalMAP}[algorithm]
@@ -30,6 +69,8 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
         intermediate_snapshots=list(range(total + 1)),
         random_state=seed,
         verbose=False,
+        # LocalMAP-only: PaCMAP.__init__ doesn't accept it.
+        **({"low_dist_thres": low_dist_thres} if algorithm == "localmap" else {}),
     )
     if algorithm == "localmap":
         with capture_fp_history() as calls:

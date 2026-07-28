@@ -43,6 +43,7 @@ TAG_PARAMS = [
     ("n_neighbors", "nn"),
     ("mn_ratio", "mnr"),
     ("fp_ratio", "fpr"),
+    ("low_dist_thres", "ldt"),
     ("num_iters", "iters"),
     ("seed", "seed"),
     ("n_lines", "nlines"),
