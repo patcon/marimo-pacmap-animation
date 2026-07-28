@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Tasks 1-2 done; next up Task 3.
+Status: in progress — Tasks 1-3 done (Checkpoint A reached); next up Task 4.
 
 ## Goal
 
@@ -151,7 +151,7 @@ columns 1–2 constant at 2.0/1.0; `mn_min <= 0` raises `ValueError`.
 *Depends on:* Task 1. *Files:* `pacmap_cli/schedule.py`, `tests/test_schedule.py`.
 *Scope:* XS.
 
-### Task 3 — `override_weight_schedule(W)`
+### Task 3 — `override_weight_schedule(W)` — **DONE**
 Contextmanager patching `pacmap.pacmap.find_weight`, mirroring `capture_fp_history()`:
 signature guard via `inspect.signature(original)` (3 params, no `.py_func`), restore in
 `finally`. Assert `len(W) == sum(num_iters)` on first call as a cheap misconfiguration

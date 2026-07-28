@@ -10,6 +10,9 @@ and schedule strip, so the two can't disagree.
 the same array shape, and nothing else has to change.
 """
 
+import contextlib
+import inspect
+
 import numpy as np
 
 
@@ -67,3 +70,47 @@ def build_schedule(preset, num_iters, **params):
     if preset not in PRESETS:
         raise ValueError(f"unknown schedule preset {preset!r}; valid presets: {', '.join(sorted(PRESETS))}")
     return PRESETS[preset](num_iters, **params)
+
+
+@contextlib.contextmanager
+def override_weight_schedule(W):
+    """Drive the fit from `W` instead of pacmap's own schedule, for the
+    duration of the `with` block.
+
+    Monkey-patches `pacmap.pacmap.find_weight`, which both `pacmap()` and
+    `localmap()` call by bare module-level name once per iteration - so
+    patching the name is enough, and neither optimization loop has to be
+    duplicated. Unlike the far-pair sampler `capture_fp_history()` patches,
+    `find_weight` is plain Python rather than numba-jitted, so its signature
+    is inspected directly (no `.py_func`).
+
+    The original is restored in `finally` even if the fit raises, so a failed
+    fit can't leak the patch into the next one - an `--algorithm both` run
+    fits twice.
+    """
+    import pacmap
+
+    original = pacmap.pacmap.find_weight
+    # Guard against a future pacmap upgrade silently changing this
+    # function's shape out from under the patch.
+    if len(inspect.signature(original).parameters) != 3:
+        raise RuntimeError(
+            "pacmap.pacmap.find_weight's signature has changed; "
+            "override_weight_schedule()'s monkey-patch needs updating for "
+            "this pacmap version."
+        )
+
+    def wrapped(w_MN_init, itr, *, num_iters):
+        if len(W) != sum(num_iters):
+            raise ValueError(
+                f"schedule has {len(W)} rows but the fit runs {sum(num_iters)} "
+                f"iterations ({num_iters}); it was built for different num_iters."
+            )
+        w_MN, w_NB, w_FP = W[itr]
+        return float(w_MN), float(w_NB), float(w_FP)
+
+    pacmap.pacmap.find_weight = wrapped
+    try:
+        yield
+    finally:
+        pacmap.pacmap.find_weight = original

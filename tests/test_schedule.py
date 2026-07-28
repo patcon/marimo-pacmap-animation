@@ -106,6 +106,74 @@ def test_cycle_rejects_nonpositive_period():
         cli.build_schedule("cycle", (0, 0, 400), period=0)
 
 
+def _sentinel_schedule(total):
+    """A schedule whose every value is distinguishable from every other, so a
+    test can tell exactly which row was served."""
+    return np.arange(total * 3, dtype=float).reshape(total, 3)
+
+
+def test_override_serves_the_row_for_each_iteration():
+    import pacmap
+
+    W = _sentinel_schedule(30)
+    with cli.override_weight_schedule(W):
+        for itr in (0, 7, 29):
+            got = pacmap.pacmap.find_weight(1000.0, itr, num_iters=(10, 10, 10))
+            assert tuple(got) == tuple(W[itr])
+
+
+def test_override_returns_three_unpackable_floats():
+    """pacmap unpacks the result as `w_MN, w_neighbors, w_FP = find_weight(...)`
+    and passes each into a numba-jitted gradient, so the shape and the element
+    types both matter."""
+    import pacmap
+
+    with cli.override_weight_schedule(_sentinel_schedule(30)):
+        w_MN, w_NB, w_FP = pacmap.pacmap.find_weight(1000.0, 3, num_iters=(10, 10, 10))
+    assert all(isinstance(w, float) for w in (w_MN, w_NB, w_FP))
+
+
+def test_override_restores_the_original_function_on_exit():
+    import pacmap
+
+    original = pacmap.pacmap.find_weight
+    with cli.override_weight_schedule(_sentinel_schedule(30)):
+        assert pacmap.pacmap.find_weight is not original
+    assert pacmap.pacmap.find_weight is original
+
+
+def test_override_restores_the_original_function_when_the_body_raises():
+    """A `both` run fits twice; a patch leaking out of a failed first fit would
+    silently corrupt the second."""
+    import pacmap
+
+    original = pacmap.pacmap.find_weight
+    with pytest.raises(RuntimeError):
+        with cli.override_weight_schedule(_sentinel_schedule(30)):
+            raise RuntimeError("boom")
+    assert pacmap.pacmap.find_weight is original
+
+
+def test_override_rejects_a_schedule_of_the_wrong_length():
+    """Catches a schedule built for different num_iters than the fit is running
+    - otherwise it would silently IndexError deep inside the fit, or worse,
+    serve the wrong rows."""
+    import pacmap
+
+    with cli.override_weight_schedule(_sentinel_schedule(30)):
+        with pytest.raises(ValueError):
+            pacmap.pacmap.find_weight(1000.0, 0, num_iters=(10, 10, 50))
+
+
+def test_override_raises_if_find_weights_signature_changed(monkeypatch):
+    """A pacmap upgrade that reshapes find_weight should fail loudly here
+    rather than silently driving the fit with the wrong arguments."""
+    monkeypatch.setattr("pacmap.pacmap.find_weight", lambda w_MN_init, itr: None)
+    with pytest.raises(RuntimeError):
+        with cli.override_weight_schedule(_sentinel_schedule(30)):
+            pass
+
+
 def test_weight_schedule_delegates_to_vanilla_preset():
     """weight_schedule() drives the overlay and the schedule strip. It must be
     the same array the fit is driven by (plus the init row), not a second

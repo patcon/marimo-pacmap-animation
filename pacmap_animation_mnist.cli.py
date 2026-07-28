@@ -53,7 +53,7 @@ from pacmap_cli.pairs import (
 )
 from pacmap_cli.paths import TAG_PARAMS, param_tag, resolve_output_dir, unique_path
 from pacmap_cli.render import render_animation, render_frame
-from pacmap_cli.schedule import PRESETS, build_schedule
+from pacmap_cli.schedule import PRESETS, build_schedule, override_weight_schedule
 
 
 if __name__ == "__main__":
