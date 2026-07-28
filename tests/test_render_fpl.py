@@ -8,6 +8,7 @@ or no GPU adapter is available. Run locally with:
 """
 
 import importlib.util
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -326,22 +327,38 @@ def test_render_frame_fpl_3d_rotate_changes_view_angle():
 
 @requires_fpl
 @pytest.mark.parametrize("n_components", [2, 3])
-def test_render_fpl_transparent_graphics_do_not_write_depth(n_components):
-    # Edges and points are semi-transparent and layered painter-style (edges
-    # under points, matching matplotlib's zorder). If they write depth,
-    # anything drawn after them and sitting behind them in z is depth-culled
-    # instead of alpha-blended: in 3D the edges then "erase" the points
-    # behind them and blend with the background - visible as opaque dark
-    # streaks cutting through clusters - and a dense low-point-alpha cloud
-    # can't accumulate because points cull each other.
+def test_render_fpl_edges_never_write_depth(n_components):
+    # Edges are semi-transparent. If they wrote depth, anything drawn after
+    # them and sitting behind them in z would be depth-culled instead of
+    # alpha-blended: in 3D the edges would "erase" the points behind them and
+    # blend with the background - visible as opaque dark streaks cutting
+    # through clusters. True under either OPAQUE_POINTS setting.
     from pacmap_cli import render_fpl
 
     inputs = synthetic_render_inputs(n_components=n_components)
     fig, update, total, BG = render_fpl._build_renderer_fpl(n_lines=5, **inputs)
     main_graphics = [g for g in fig[0].graphics if hasattr(g, "colors")]
     assert len(main_graphics) == 2  # one merged edge buffer + scatter
-    for g in main_graphics:
-        assert g.world_object.material.depth_write is False
+    edges, = [g for g in main_graphics if type(g).__name__ == "LineGraphic"]
+    assert edges.world_object.material.depth_write is False
+
+
+@requires_fpl
+@pytest.mark.parametrize("n_components", [2, 3])
+def test_render_fpl_point_depth_write_follows_opaque_points_toggle(n_components):
+    # OPAQUE_POINTS is what lets an edge in front of a cluster draw in front of
+    # it: the points write depth (and pygfx draws opaque before blended), so
+    # edge fragments behind a point are discarded rather than composited under
+    # the whole scatter. Off, the points must not write depth either, so a
+    # dense low-point-alpha cloud can still accumulate opacity.
+    from pacmap_cli import render_fpl
+
+    inputs = synthetic_render_inputs(n_components=n_components)
+    for opaque in (True, False):
+        with mock.patch.object(render_fpl, "OPAQUE_POINTS", opaque):
+            fig, update, total, BG = render_fpl._build_renderer_fpl(n_lines=5, **inputs)
+        scat, = [g for g in fig[0].graphics if type(g).__name__ == "ScatterGraphic"]
+        assert scat.world_object.material.depth_write is opaque
 
 
 @requires_fpl

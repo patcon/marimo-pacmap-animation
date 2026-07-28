@@ -59,6 +59,25 @@ def _import_fastplotlib():
 DEPTH_SORT_POINTS = True
 DEPTH_SORT_EDGES = True
 
+# Sorting each buffer only orders geometry *within* that buffer. Points and
+# edges are separate draw calls, so with neither writing depth the GPU
+# composites them in graphic order and the scatter always wins - an edge
+# passing in front of a cluster still draws under it. Turning this on makes
+# the points opaque (alpha_mode "auto", which writes depth) and the edges
+# explicitly blended; pygfx draws opaque objects before blended ones, so the
+# points land in the depth buffer first and each edge fragment is then either
+# discarded (it is behind a point) or blended over the point's actual color
+# (it is in front). Note this is NOT the pre-870d641 arrangement that produced
+# dark streaks - that was the mirror image, with the *edges* writing depth and
+# drawing first, so a near-invisible edge could cull whole clusters behind it
+# and composite against the background. Here edges never occlude anything.
+# The cost lands on the points instead: a point behind another point is now
+# depth-culled, so a dense low --point-alpha cloud stops accumulating opacity
+# the way matplotlib's does. Flip off to get that accumulation back at the
+# price of edges never appearing in front. No-op in 2D, where everything is
+# coplanar and there is no "in front" to get wrong.
+OPAQUE_POINTS = True
+
 
 def edge_segments(Y, P):
     """Vertex buffer drawing the (k, 2) index pairs `P` over embedding `Y` as
@@ -174,12 +193,17 @@ def _build_renderer_fpl(
     edges = sub.add_line(
         edge_segments(Y0, checkpoint_P_all[0]), thickness=1.0, colors="w",
     )
-    # Semi-transparent overlays must not write depth: edges draw first (under
-    # the points, matching matplotlib's zorder), and if they wrote depth the
-    # scatter drawn after would be depth-culled wherever it falls behind an
-    # edge in z - the edge then blends with the background instead of the
-    # points, showing up as opaque dark streaks cutting through clusters in 3D.
-    edges.world_object.material.depth_write = False
+    # Semi-transparent overlays must not write depth: if the edges wrote depth,
+    # anything drawn after them and sitting behind them in z would be
+    # depth-culled instead of alpha-blended - the edge then blends with the
+    # background instead of the points, showing up as opaque dark streaks
+    # cutting through clusters in 3D. Under OPAQUE_POINTS the mode is set
+    # explicitly rather than via depth_write so pygfx also classifies the edges
+    # as transparent and draws them after the (opaque) scatter.
+    if OPAQUE_POINTS:
+        edges.world_object.material.alpha_mode = "blend"  # implies depth_write False
+    else:
+        edges.world_object.material.depth_write = False
     # RGB is static per type; only the alpha column and the row order change
     # per frame.
     edge_rgba = np.zeros((3 * n_edges, 4), dtype=np.float32)
@@ -191,14 +215,16 @@ def _build_renderer_fpl(
         cmap="tab10", cmap_transform=y, sizes=point_size,
     )
     scat.colors[:, -1] = point_alpha
-    # Same as the edges: without this, semi-transparent points depth-cull
-    # each other, so a dense low-point-alpha cloud can't accumulate opacity
-    # the way matplotlib's does. The cost is that points then blend in buffer
-    # order rather than depth order, so in 3D `update()` sorts them
-    # back-to-front per frame (see sort_by_depth below); in 2D everything is
-    # coplanar and buffer order is the right answer anyway (it's what
-    # matplotlib's single scatter does too).
-    scat.world_object.material.depth_write = False
+    # With OPAQUE_POINTS the points keep the default depth-writing mode, which
+    # is what lets edges in front of them draw in front (see the toggle's note).
+    # Without it they must not write depth either, or semi-transparent points
+    # depth-cull each other and a dense low-point-alpha cloud can't accumulate
+    # opacity the way matplotlib's does. Either way the points blend in buffer
+    # order, so in 3D `update()` sorts them back-to-front per frame; in 2D
+    # everything is coplanar and buffer order is the right answer anyway (it's
+    # what matplotlib's single scatter does too).
+    if not OPAQUE_POINTS:
+        scat.world_object.material.depth_write = False
     point_rgba = np.array(scat.colors.value, dtype=np.float32)
 
     from fastplotlib.graphics import TextGraphic
