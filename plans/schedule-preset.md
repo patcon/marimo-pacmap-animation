@@ -1,6 +1,6 @@
 # Plan: `--schedule-preset` — driving the pair-weight schedule
 
-Status: in progress — Task 1 done; next up Task 2.
+Status: in progress — Tasks 1-2 done; next up Task 3.
 
 ## Goal
 
@@ -138,7 +138,7 @@ passes unchanged.
 *Depends on:* nothing. *Files:* `pacmap_cli/schedule.py` (new), `pacmap_cli/camera.py`,
 `tests/test_schedule.py` (new). *Scope:* S.
 
-### Task 2 — the `cycle` preset
+### Task 2 — the `cycle` preset — **DONE**
 Add `cycle` to `PRESETS`.
 
 *Failing test first:* shape `(total, 3)`; `w_MN[0] == mn_max` (cos anchor);
