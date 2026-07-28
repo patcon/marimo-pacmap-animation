@@ -4,13 +4,14 @@ import numpy as np
 
 
 def weight_schedule(num_iters):
-    """w_MN / w_NB / w_FP at every snapshot index, including the init frame."""
-    from pacmap.pacmap import find_weight
+    """w_MN / w_NB / w_FP at every snapshot index, including the init frame.
 
-    total = sum(num_iters)
-    W = np.array([find_weight(1000.0, i, num_iters=num_iters) for i in range(total)])
-    W = np.vstack([W[0], W])  # prepend so index == snapshot index
-    return W
+    Delegates to the `vanilla` preset rather than recomputing the schedule, so
+    there is exactly one source of truth for it (see `schedule.py`)."""
+    from .schedule import build_schedule
+
+    S = build_schedule("vanilla", num_iters)
+    return np.vstack([S[0], S])  # prepend so index == snapshot index
 
 
 def camera_path(trace, y=None, focus_label=None, smooth_window=15, headroom=1.15, fixed=False, zoom=1.0):

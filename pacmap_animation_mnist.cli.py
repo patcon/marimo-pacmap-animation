@@ -25,7 +25,7 @@ orchestrate). This file re-exports everything so it can still be imported
 directly (e.g. from a notebook) exactly as before the split.
 """
 
-from pacmap_cli import cache, camera, config, data, fit, fp_history, orchestrate, overlay, pairs, paths, render, render_fpl
+from pacmap_cli import cache, camera, config, data, fit, fp_history, orchestrate, overlay, pairs, paths, render, render_fpl, schedule
 from pacmap_cli.cache import fit_key, load_fit, save_fit
 from pacmap_cli.camera import camera_path, weight_schedule
 from pacmap_cli.config import (
@@ -53,6 +53,7 @@ from pacmap_cli.pairs import (
 )
 from pacmap_cli.paths import TAG_PARAMS, param_tag, resolve_output_dir, unique_path
 from pacmap_cli.render import render_animation, render_frame
+from pacmap_cli.schedule import PRESETS, build_schedule
 
 
 if __name__ == "__main__":
