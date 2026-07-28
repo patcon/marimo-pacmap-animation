@@ -75,14 +75,21 @@ def _build_renderer_fpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    rotate=False,
 ):
-    """fastplotlib counterpart to render.py's `_build_renderer()`: same
-    contract - returns `(fig, update, total, BG)` where `update(f)` mutates
-    the graphics to show trace index `f` - but the figure is an offscreen
-    fastplotlib Figure and updates write straight into GPU buffers.
+    """fastplotlib counterpart to render.py's `_build_renderer()` (and, for
+    3-column traces, `_build_renderer_3d()`): same contract - returns
+    `(fig, update, total, BG)` where `update(f)` mutates the graphics to
+    show trace index `f` - but the figure is an offscreen fastplotlib Figure
+    and updates write straight into GPU buffers. Unlike matplotlib, no
+    separate 3D artist set is needed: scatter/line buffers are (n, 3)
+    natively, so 2D vs 3D differs only in camera handling. In 3D the camera
+    is orthographic at matplotlib's default viewpoint (elev=20, azim=-60,
+    z-up); `rotate=True` sweeps the azimuth through one revolution over the
+    frame range, matching the matplotlib backend (including single-frame
+    renders showing that frame's angle).
 
-    Task 3 scope: scatter + camera only; edges (Task 4) and the overlay/
-    weight strip (Task 5) land next.
+    Remaining gap: the overlay/legend/weight strip (plan Task 5, deferred).
     """
     fpl = _import_fastplotlib()
 
@@ -121,10 +128,11 @@ def _build_renderer_fpl(
     sub.frame.plane.material.color = BG
     sub.frame.resize_handle.visible = False
 
+    dim = trace.shape[2]
     # Edge layers added before the scatter so points draw on top (render
     # order follows add order), and back-to-front within themselves to match
     # the matplotlib zorder: further < mid-near < neighbour.
-    Y0 = trace[0][:, :2]
+    Y0 = trace[0]
     from pygfx.utils import Color
 
     def add_edges(P, color, thickness):
@@ -137,7 +145,7 @@ def _build_renderer_fpl(
     lc_nb, nb_rgba = add_edges(PN, NB_COLOR, 1.2)
 
     scat = sub.add_scatter(
-        np.ascontiguousarray(trace[0][:, :2], dtype=np.float32),
+        np.ascontiguousarray(trace[0], dtype=np.float32),
         cmap="tab10", cmap_transform=y, sizes=point_size,
     )
     scat.colors[:, -1] = point_alpha
@@ -145,12 +153,44 @@ def _build_renderer_fpl(
     fig.show()  # required once to initialize the render pipeline
 
     def apply_edges(line, base_rgba, Y, P, alpha):
-        line.data[:, :2] = edge_segments(Y, P)
+        line.data[:, :dim] = edge_segments(Y, P)
         base_rgba[:, 3] = edge_vertex_alphas(alpha, len(P), line_alpha)
         line.colors[:] = base_rgba
 
+    def set_camera(f):
+        L = float(r_s[f])
+        if dim == 2:
+            cx, cy = (float(c) for c in center[f])
+            sub.camera.set_state({
+                "position": np.array([cx, cy, 0.0]),
+                "width": 2 * L, "height": 2 * L,
+                "zoom": 1.0, "maintain_aspect": True, "fov": 0.0,
+            })
+            return
+        # 3D: orthographic camera on a sphere around the frame's center,
+        # matching matplotlib's elev=20/azim=-60 default (z-up). Azimuth
+        # sweeps one revolution over the frame range when rotate is set.
+        c = center[f].astype(np.float64)
+        azim = np.radians(-60 + (360 * f / total if rotate else 0))
+        elev = np.radians(20)
+        direction = np.array([
+            np.cos(elev) * np.cos(azim),
+            np.cos(elev) * np.sin(azim),
+            np.sin(elev),
+        ])
+        sub.camera.set_state({
+            "position": c + direction * 3 * L,
+            "width": 2 * L, "height": 2 * L,
+            "zoom": 1.0, "maintain_aspect": True, "fov": 0.0,
+            "reference_up": np.array([0.0, 0.0, 1.0]),
+            # ortho frustum depth: scene spans +-sqrt(3)*L around a center
+            # 3L away, so (L, 6L) covers it with margin on both sides
+            "depth_range": (L, 6 * L),
+        })
+        sub.camera.look_at(c)
+
     def update(f):
-        Y = trace[f][:, :2]
+        Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
         PF = checkpoint_PF[checkpoint_index_for_frame(f, checkpoint_frames)]
         if edge_style_preset == "v3":
@@ -158,17 +198,11 @@ def _build_renderer_fpl(
                 w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
         else:
             a_nb, a_mn, a_fp = compute_edge_alphas(w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma)
-        scat.data[:, :2] = Y
+        scat.data[:, :dim] = Y
         apply_edges(lc_nb, nb_rgba, Y, PN, a_nb)
         apply_edges(lc_mn, mn_rgba, Y, PM, a_mn)
         apply_edges(lc_fp, fp_rgba, Y, PF, a_fp)
-        L = float(r_s[f])
-        cx, cy = (float(c) for c in center[f][:2])
-        sub.camera.set_state({
-            "position": np.array([cx, cy, 0.0]),
-            "width": 2 * L, "height": 2 * L,
-            "zoom": 1.0, "maintain_aspect": True, "fov": 0.0,
-        })
+        set_camera(f)
         return ()
 
     return fig, update, total, BG
@@ -198,6 +232,7 @@ def render_frame_fpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        rotate=rotate,
     )
     print(f"Rendering iteration {frame} of {total} to {out_path}...")
     t0 = time.time()
@@ -230,6 +265,7 @@ def render_animation_fpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        rotate=rotate,
     )
     start = 0 if start is None else start
     end = total if end is None else end

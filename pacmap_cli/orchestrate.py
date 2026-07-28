@@ -12,11 +12,6 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
     """Fit once, then render one output per (iter_item, out_path) pair in
     iter_out_paths - iter_item is None (full range), an int (single-iteration
     png), or a (start, end) tuple (range mp4)."""
-    if cfg["renderer"] == "fastplotlib" and cfg["n_components"] == 3:
-        raise ValueError(
-            "--renderer fastplotlib does not support --n-components 3 yet "
-            "(see tasks/plan.md Task 7); use --renderer matplotlib for 3D"
-        )
     trace, pair_neighbors, pair_MN, pair_FP_history = fit_trace(
         X,
         algorithm,

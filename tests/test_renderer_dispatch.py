@@ -62,25 +62,6 @@ def test_render_dispatch_uses_registry_backend(monkeypatch):
     assert [name for name, _ in calls] == ["animation", "frame"]
 
 
-# --- fastplotlib + 3D rejection (until 3D support lands, plan Task 7) ---
-
-def test_run_algorithm_rejects_fastplotlib_with_n_components_3(monkeypatch):
-    def fail_if_fit_runs(*args, **kwargs):
-        raise AssertionError("fit_trace ran before the renderer/3D validation")
-
-    monkeypatch.setattr(cli.orchestrate, "fit_trace", fail_if_fit_runs)
-    cfg = dict(cli.DEFAULT_CONFIG)
-    cfg["renderer"] = "fastplotlib"
-    cfg["n_components"] = 3
-    cfg["num_iters"] = (2, 2, 2)
-    with pytest.raises(ValueError, match="fastplotlib"):
-        cli.run_algorithm(
-            X=np.zeros((10, 4)), y=np.zeros(10, dtype=int),
-            rs=np.random.RandomState(0), algorithm="pacmap", cfg=cfg,
-            iter_out_paths=[(None, "out.mp4")],
-        )
-
-
 # --- filename marker ---
 
 def test_main_fastplotlib_filename_gets_fpl_marker(tmp_path, monkeypatch):

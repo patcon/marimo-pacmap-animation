@@ -259,3 +259,93 @@ def test_main_end_to_end_with_fastplotlib_renderer(tmp_path, monkeypatch):
     ])
     out_file = out_dir / "pacmap_mnist_fpl.mp4"
     assert out_file.exists() and out_file.stat().st_size > 0
+
+
+# --- Task 7: 3D support ---
+
+def test_edge_segments_supports_3_column_embeddings():
+    from pacmap_cli import render_fpl
+
+    Y = np.arange(15, dtype=np.float32).reshape(5, 3)
+    P = np.array([[0, 2], [4, 1]])
+    buf = render_fpl.edge_segments(Y, P)
+    assert buf.shape == (6, 3)
+    np.testing.assert_array_equal(buf[0], Y[0])
+    np.testing.assert_array_equal(buf[1], Y[2])
+    assert np.isnan(buf[2]).all()
+
+
+@requires_fpl
+def test_render_frame_fpl_3d_writes_nonempty_png(tmp_path):
+    from PIL import Image
+
+    inputs = synthetic_render_inputs(n_components=3)
+    out = tmp_path / "frame3d.png"
+    cli.render.render_frame(
+        renderer="fastplotlib", out_path=str(out), frame=3, n_lines=5,
+        n_components=3, **inputs,
+    )
+    assert out.exists() and out.stat().st_size > 0
+    img = np.asarray(Image.open(out).convert("RGB"))
+    assert img.std() > 0  # points actually drew
+    assert (img.mean(axis=2) < 40).mean() > 0.5  # on the dark background
+
+
+@requires_fpl
+def test_render_animation_fpl_3d_writes_mp4(tmp_path):
+    import imageio_ffmpeg
+
+    inputs = synthetic_render_inputs(n_components=3)
+    out = tmp_path / "anim3d.mp4"
+    cli.render.render_animation(
+        renderer="fastplotlib", out_path=str(out), n_lines=5, step=1, fps=5,
+        n_components=3, rotate=True, **inputs,
+    )
+    reader = imageio_ffmpeg.read_frames(str(out))
+    reader.__next__()
+    assert sum(1 for _ in reader) == 7
+
+
+@requires_fpl
+def test_render_frame_fpl_3d_rotate_changes_view_angle():
+    # Pixel comparison is unreliable (GPU renders are not bit-deterministic),
+    # so assert on the camera state itself: at a non-zero frame the rotating
+    # camera must sit at a different position than the fixed one.
+    from pacmap_cli import render_fpl
+
+    inputs = synthetic_render_inputs(n_components=3)
+    positions = {}
+    for rotate in (False, True):
+        fig, update, total, BG = render_fpl._build_renderer_fpl(
+            n_lines=5, rotate=rotate, **inputs,
+        )
+        update(3)
+        positions[rotate] = fig[0, 0].camera.get_state()["position"].copy()
+    assert not np.allclose(positions[False], positions[True])
+
+
+def test_run_algorithm_no_longer_rejects_fastplotlib_3d(monkeypatch):
+    # The Task 1 guard must be gone: with a monkeypatched fit and renderer,
+    # a fastplotlib+3D run reaches rendering rather than raising.
+    calls = []
+
+    def fake_fit_trace(*args, **kwargs):
+        rs = np.random.RandomState(0)
+        trace = rs.rand(7, 10, 3).astype(np.float32)
+        pairs = rs.randint(0, 10, size=(5, 2))
+        return trace, pairs, pairs.copy(), [(0, pairs.copy())]
+
+    monkeypatch.setattr(cli.orchestrate, "fit_trace", fake_fit_trace)
+    monkeypatch.setitem(
+        cli.render.RENDERERS, "fastplotlib",
+        lambda: {"animation": lambda **kw: calls.append(kw) or kw["out_path"],
+                 "frame": lambda **kw: calls.append(kw) or kw["out_path"]},
+    )
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg.update(renderer="fastplotlib", n_components=3, num_iters=(2, 2, 2), n_lines=5)
+    cli.run_algorithm(
+        X=np.zeros((10, 4)), y=np.zeros(10, dtype=int),
+        rs=np.random.RandomState(0), algorithm="pacmap", cfg=cfg,
+        iter_out_paths=[(None, "out.mp4")],
+    )
+    assert len(calls) == 1
