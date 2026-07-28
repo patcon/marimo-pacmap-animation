@@ -293,7 +293,7 @@ def test_main_caches_the_fit_by_default(tmp_path, synthetic_mnist):
     cache_dir = tmp_path / "fits"
     cli.main(_cache_argv(tmp_path / "run", cache_dir))
 
-    assert len(list(cache_dir.glob("pacmap_*.npz"))) == 1
+    assert len(list(cache_dir.glob("pacmap_*/trace.npy"))) == 1
 
 
 def test_main_default_cache_dir_is_dot_cache_fits(tmp_path, synthetic_mnist):
@@ -303,7 +303,7 @@ def test_main_default_cache_dir_is_dot_cache_fits(tmp_path, synthetic_mnist):
 
     cli.main(_cache_argv(tmp_path / "run", None))
 
-    assert len(list(Path(".cache/fits").glob("pacmap_*.npz"))) == 1
+    assert len(list(Path(".cache/fits").glob("pacmap_*/trace.npy"))) == 1
 
 
 def test_main_second_identical_run_does_not_refit(tmp_path, synthetic_mnist, monkeypatch):
@@ -344,7 +344,7 @@ def test_main_changing_a_fit_param_adds_a_second_cache_entry(tmp_path, synthetic
     cli.main(_cache_argv(tmp_path / "run", cache_dir))
     cli.main(_cache_argv(tmp_path / "run2", cache_dir, "--seed", "7"))
 
-    assert len(list(cache_dir.glob("pacmap_*.npz"))) == 2
+    assert len(list(cache_dir.glob("pacmap_*/trace.npy"))) == 2
 
 
 def test_main_low_dist_thres_reaches_the_localmap_fit(tmp_path, synthetic_mnist, reducer_kwargs_spy):

@@ -124,7 +124,7 @@ def test_low_dist_thres_is_dropped_from_the_pacmap_cache_key(tmp_path, X, fit_ca
 
 def test_a_corrupt_entry_causes_a_refit(tmp_path, X, fit_calls):
     cli.fit_trace(X, "localmap", **FIT_KWARGS, cache_dir=tmp_path)
-    for path in tmp_path.glob("*.npz"):
+    for path in tmp_path.glob("localmap_*/trace.npy"):
         path.write_bytes(b"garbage")
 
     result = cli.fit_trace(X, "localmap", **FIT_KWARGS, cache_dir=tmp_path)
