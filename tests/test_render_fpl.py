@@ -339,7 +339,7 @@ def test_render_fpl_transparent_graphics_do_not_write_depth(n_components):
     inputs = synthetic_render_inputs(n_components=n_components)
     fig, update, total, BG = render_fpl._build_renderer_fpl(n_lines=5, **inputs)
     main_graphics = [g for g in fig[0].graphics if hasattr(g, "colors")]
-    assert len(main_graphics) >= 4  # 3 edge layers + scatter
+    assert len(main_graphics) == 2  # one merged edge buffer + scatter
     for g in main_graphics:
         assert g.world_object.material.depth_write is False
 
@@ -369,23 +369,29 @@ def test_render_fpl_3d_sorts_points_back_to_front():
 
 @requires_fpl
 def test_render_fpl_3d_sorts_edges_back_to_front():
-    # Same problem as the points, one layer at a time: each edge layer's
-    # segments must composite back-to-front by midpoint depth.
+    # Same problem as the points: edge segments must composite back-to-front
+    # by midpoint depth. All three pair types share one buffer, so the sort
+    # orders them against each other and not just within a type - which is
+    # the whole reason they were merged.
     from pacmap_cli import render_fpl
 
     inputs = synthetic_render_inputs(n_components=3)
     fig, update, total, BG = render_fpl._build_renderer_fpl(
         n_lines=5, rotate=True, **inputs,
     )
-    lines = [g for g in fig[0].graphics if type(g).__name__ == "LineGraphic"]
-    assert len(lines) == 3
+    line, = [g for g in fig[0].graphics if type(g).__name__ == "LineGraphic"]
     for f in (1, 4):
         update(f)
-        for line in lines:
-            verts = np.asarray(line.data.value)[:, :3]
-            mid = (verts[0::3] + verts[1::3]) / 2  # [start, end, nan] per edge
-            depth = mid @ render_fpl_view_direction(f, total)
-            assert np.all(np.diff(depth) >= -1e-5)
+        verts = np.asarray(line.data.value)[:, :3]
+        mid = (verts[0::3] + verts[1::3]) / 2  # [start, end, nan] per edge
+        depth = mid @ render_fpl_view_direction(f, total)
+        assert np.all(np.diff(depth) >= -1e-5)
+        # Colors travel with their edges, so the buffer is no longer three
+        # contiguous per-type blocks.
+        rgb = np.asarray(line.colors.value)[0::3, :3]
+        assert len(np.unique(rgb, axis=0)) == 3
+        blocks = 1 + np.sum(np.any(np.diff(rgb, axis=0) != 0, axis=1))
+        assert blocks > 3
 
 
 @requires_fpl

@@ -149,27 +149,42 @@ def _build_renderer_fpl(
         s.frame.resize_handle.visible = False
 
     dim = trace.shape[2]
-    # Edge layers added before the scatter so points draw on top (render
-    # order follows add order), and back-to-front within themselves to match
-    # the matplotlib zorder: further < mid-near < neighbour.
     Y0 = trace[0]
     from pygfx.utils import Color
 
-    def add_edges(P, color, thickness):
-        line = sub.add_line(edge_segments(Y0, P), thickness=thickness, colors=color)
-        # Semi-transparent overlays must not write depth: edges draw first
-        # (under the points, matching matplotlib's zorder), and if they wrote
-        # depth the scatter drawn after would be depth-culled wherever it
-        # falls behind an edge in z - the edge then blends with the
-        # background instead of the points, showing up as opaque dark
-        # streaks cutting through clusters in 3D.
-        line.world_object.material.depth_write = False
-        base = np.tile(np.asarray(Color(color)), (3 * len(P), 1)).astype(np.float32)
-        return line, base
+    # All three pair types share one line graphic, concatenated in what used
+    # to be their layer order (further, then mid-near, then neighbour) so the
+    # unsorted 2D render still composites exactly as separate layers did -
+    # and matplotlib's zorder does. One buffer is what makes depth sorting
+    # work *across* pair types in 3D: with three graphics, layer order beat
+    # depth, so a further-pair edge in front of a neighbour edge still drew
+    # under it. The cost is a single shared `thickness` (matplotlib varies it,
+    # 0.5 for further vs 0.7 for the rest); the thinner value wins, since
+    # merged rendering already gives the dense further layer more presence.
+    # Row counts are fixed - every far-pair checkpoint is subsampled through
+    # the same fp_idx - so the per-type slices below hold for every frame.
+    checkpoint_P_all = [np.vstack([PF, PM, PN]) for PF in checkpoint_PF]
+    n_edges = len(checkpoint_P_all[0])
+    edge_spans = []  # (vertex_slice, edge_count) per type, in buffer order
+    at = 0
+    for P, color in ((checkpoint_PF[0], FP_COLOR), (PM, MN_COLOR), (PN, NB_COLOR)):
+        edge_spans.append((slice(3 * at, 3 * (at + len(P))), len(P), color))
+        at += len(P)
 
-    lc_fp, fp_rgba = add_edges(checkpoint_PF[0], FP_COLOR, 1.0)
-    lc_mn, mn_rgba = add_edges(PM, MN_COLOR, 1.2)
-    lc_nb, nb_rgba = add_edges(PN, NB_COLOR, 1.2)
+    edges = sub.add_line(
+        edge_segments(Y0, checkpoint_P_all[0]), thickness=1.0, colors="w",
+    )
+    # Semi-transparent overlays must not write depth: edges draw first (under
+    # the points, matching matplotlib's zorder), and if they wrote depth the
+    # scatter drawn after would be depth-culled wherever it falls behind an
+    # edge in z - the edge then blends with the background instead of the
+    # points, showing up as opaque dark streaks cutting through clusters in 3D.
+    edges.world_object.material.depth_write = False
+    # RGB is static per type; only the alpha column and the row order change
+    # per frame.
+    edge_rgba = np.zeros((3 * n_edges, 4), dtype=np.float32)
+    for span, _n, color in edge_spans:
+        edge_rgba[span, :3] = np.asarray(Color(color))[:3]
 
     scat = sub.add_scatter(
         np.ascontiguousarray(trace[0], dtype=np.float32),
@@ -239,21 +254,24 @@ def _build_renderer_fpl(
         "zoom": 1.0, "maintain_aspect": False, "fov": 0.0,
     })
 
-    def apply_edges(line, base_rgba, Y, P, alpha, direction):
-        segs = edge_segments(Y, P)
-        vert_alpha = edge_vertex_alphas(alpha, len(P), line_alpha)
+    def apply_edges(Y, P_all, alphas, direction):
+        """Write one frame of every pair type into the shared edge buffer.
+        `alphas` is (further, mid-near, neighbour) - each a scalar or a
+        per-edge array - in the same order as `edge_spans`."""
+        segs = edge_segments(Y, P_all)
+        rgba = edge_rgba
+        for (span, n, _color), alpha in zip(edge_spans, alphas):
+            rgba[span, 3] = edge_vertex_alphas(alpha, n, line_alpha)
         if direction is not None and DEPTH_SORT_EDGES:
-            # Sort this layer's edges back-to-front by midpoint depth, in
-            # blocks of three vertices ([start, end, nan] per edge). This
-            # orders edges within a layer only; the three layers still
-            # composite in their fixed add order (further < mid-near <
-            # neighbour), which is what matplotlib's zorder does too.
-            order = np.argsort((Y[P[:, 0]] + Y[P[:, 1]]) @ direction)
-            segs = segs.reshape(len(P), 3, -1)[order].reshape(3 * len(P), -1)
-            vert_alpha = vert_alpha.reshape(len(P), 3)[order].ravel()
-        line.data[:, :dim] = segs
-        base_rgba[:, 3] = vert_alpha
-        line.colors[:] = base_rgba
+            # Sort every edge back-to-front by midpoint depth, in blocks of
+            # three vertices ([start, end, nan] per edge), colors carried
+            # along. Sorting the merged buffer is what orders edges across
+            # pair types and not just within one.
+            order = np.argsort((Y[P_all[:, 0]] + Y[P_all[:, 1]]) @ direction)
+            segs = segs.reshape(n_edges, 3, -1)[order].reshape(3 * n_edges, -1)
+            rgba = rgba.reshape(n_edges, 3, 4)[order].reshape(3 * n_edges, 4)
+        edges.data[:, :dim] = segs
+        edges.colors[:] = rgba
 
     def view_direction(f):
         """Unit vector from the frame's camera position toward the scene: the
@@ -296,7 +314,8 @@ def _build_renderer_fpl(
     def update(f):
         Y = trace[f]
         w_MN, w_NB, w_FP = W[f]
-        PF = checkpoint_PF[checkpoint_index_for_frame(f, checkpoint_frames)]
+        ck = checkpoint_index_for_frame(f, checkpoint_frames)
+        PF, P_all = checkpoint_PF[ck], checkpoint_P_all[ck]
         if edge_style_preset == "v3":
             a_nb, a_mn, a_fp = compute_edge_alphas(
                 w_NB, w_MN, w_FP, preset=edge_style_preset, gamma=edge_gamma, Y=Y, pairs=(PN, PM, PF))
@@ -312,9 +331,7 @@ def _build_renderer_fpl(
             scat.colors[:] = point_rgba[order]
         else:
             scat.data[:, :dim] = Y
-        apply_edges(lc_nb, nb_rgba, Y, PN, a_nb, direction)
-        apply_edges(lc_mn, mn_rgba, Y, PM, a_mn, direction)
-        apply_edges(lc_fp, fp_rgba, Y, PF, a_fp, direction)
+        apply_edges(Y, P_all, (a_fp, a_mn, a_nb), direction)
         set_camera(f)
         ph = 1 if f <= num_iters[0] else (2 if f <= num_iters[0] + num_iters[1] else 3)
         title.text = compute_overlay_text(f, total, ph, w_MN, w_NB, w_FP, title_prefix, preset=overlay_style_preset)
