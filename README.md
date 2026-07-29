@@ -1,6 +1,6 @@
 # PaCMAP / LocalMAP MNIST Animation
 
-[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/patcon/marimo-pacmap-animation/blob/main/pacmap_animation_mnist.marimo.py)
+[![Open in molab](https://marimo.io/molab-shield.svg)](https://molab.marimo.io/github/patcon/pacmap-animation/blob/main/pacmap_animation_mnist.marimo.py)
 
 A [marimo](https://marimo.io) notebook that animates [PaCMAP](https://github.com/YingfanWang/PaCMAP) and LocalMAP optimizing a 2D embedding of MNIST, frame by frame.
 
