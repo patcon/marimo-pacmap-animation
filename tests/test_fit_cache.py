@@ -131,3 +131,60 @@ def test_a_corrupt_entry_causes_a_refit(tmp_path, X, fit_calls):
 
     assert len(fit_calls) == 2
     assert result[0].shape == (7, 20, 2)
+
+
+VANILLA_SCHEDULE_PARAMS = dict(
+    schedule_preset="vanilla", schedule_period=100,
+    schedule_mn_min=0.05, schedule_mn_max=100.0,
+)
+CYCLE_SCHEDULE_PARAMS = {**VANILLA_SCHEDULE_PARAMS, "schedule_preset": "cycle"}
+
+
+def test_vanilla_schedule_params_do_not_change_the_cache_key(tmp_path, X, fit_calls):
+    """Landing the schedule feature must not invalidate entries cached before
+    it existed, so vanilla's params stay out of the key entirely."""
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, cache_dir=tmp_path)
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule_params=VANILLA_SCHEDULE_PARAMS,
+                  cache_dir=tmp_path)
+    assert len(fit_calls) == 1
+
+
+def test_switching_to_the_cycle_preset_misses_the_cache(tmp_path, X, fit_calls):
+    """The schedule changes the fit, so reusing the vanilla trace for a cycle
+    run would silently serve the wrong embedding."""
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule_params=VANILLA_SCHEDULE_PARAMS,
+                  cache_dir=tmp_path)
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule_params=CYCLE_SCHEDULE_PARAMS,
+                  cache_dir=tmp_path)
+    assert len(fit_calls) == 2
+
+
+@pytest.mark.parametrize("key,value", [
+    ("schedule_period", 250),
+    ("schedule_mn_min", 0.5),
+    ("schedule_mn_max", 50.0),
+])
+def test_changing_a_cycle_knob_misses_the_cache(tmp_path, X, fit_calls, key, value):
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule_params=CYCLE_SCHEDULE_PARAMS,
+                  cache_dir=tmp_path)
+    cli.fit_trace(X, "localmap", **FIT_KWARGS,
+                  schedule_params={**CYCLE_SCHEDULE_PARAMS, key: value}, cache_dir=tmp_path)
+    assert len(fit_calls) == 2
+
+
+def test_cycle_knobs_are_ignored_under_the_vanilla_preset(tmp_path, X, fit_calls):
+    """Vanilla has no period, so a stray --schedule-period must not force a
+    pointless refit - the same treatment low_dist_thres gets under pacmap."""
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule_params=VANILLA_SCHEDULE_PARAMS,
+                  cache_dir=tmp_path)
+    cli.fit_trace(X, "localmap", **FIT_KWARGS,
+                  schedule_params={**VANILLA_SCHEDULE_PARAMS, "schedule_period": 300},
+                  cache_dir=tmp_path)
+    assert len(fit_calls) == 1
+
+
+def test_schedule_is_passed_through_to_the_fit(tmp_path, X, fit_calls):
+    schedule = cli.build_schedule("cycle", FIT_KWARGS["num_iters"], period=3)
+    cli.fit_trace(X, "localmap", **FIT_KWARGS, schedule=schedule,
+                  schedule_params=CYCLE_SCHEDULE_PARAMS, cache_dir=None)
+    assert np.array_equal(fit_calls[0]["schedule"], schedule)

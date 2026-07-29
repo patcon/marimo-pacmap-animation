@@ -3,6 +3,8 @@
 import argparse
 import json
 
+from .schedule import PRESETS
+
 
 DEFAULT_CONFIG = {
     "n": 5000,
@@ -13,6 +15,17 @@ DEFAULT_CONFIG = {
     "fp_ratio": 2.0,
     "low_dist_thres": 10.0,    # LocalMAP only (ignored by PaCMAP): acceptance distance for the "local" further pairs it resamples every 10 iterations
     "num_iters": [100, 100, 250],
+    "schedule_preset": "vanilla",  # pair-weight schedule driving the fit; "vanilla" is pacmap's own (and leaves the fit unpatched), "cycle"/"breathe" sweep forever. See schedule.py
+    # Each knob below is None = "use whatever this preset defaults to". The
+    # presets differ precisely by their defaults (breathe holds w_MN and sweeps
+    # w_FP; cycle does the reverse), so a concrete default here would override
+    # every preset back into the same shape. See schedule.preset_defaults().
+    "schedule_period": None,    # iterations per full sweep
+    "schedule_mn_min": None,    # w_MN at the local end of the sweep (must be > 0; log-spaced)
+    "schedule_mn_max": None,    # w_MN at the global end of the sweep
+    "schedule_fp_min": None,    # w_FP at the condensed end of the sweep
+    "schedule_fp_max": None,    # w_FP at the spread-out end of the sweep
+    "schedule_fp_phase": None,  # w_FP's phase offset from w_MN, in cycles (0.5 = antiphase)
     "seed": 42,
     "n_lines": 150,
     "step": 3,
@@ -92,6 +105,33 @@ def parse_args(argv=None):
                          f"the green edges the phase-3 animation shows (default: {d['low_dist_thres']})")
     p.add_argument("--num-iters", type=str, default=None,
                     help=f"comma-separated PaCMAP phase lengths, e.g. 100,100,250 (default: {','.join(map(str, d['num_iters']))})")
+    p.add_argument("--schedule-preset", choices=sorted(PRESETS), default=None,
+                    help="pair-weight schedule the fit is driven by. 'vanilla' is pacmap's "
+                         "own three-phase schedule, left entirely unpatched. 'cycle' instead "
+                         "sweeps w_MN back and forth between global- and local-structure "
+                         "emphasis indefinitely, so the embedding runs as a limit cycle rather "
+                         f"than converging (default: {d['schedule_preset']})")
+    p.add_argument("--schedule-period", type=int, default=None,
+                    help="cycling presets only: iterations per full sweep (default: the preset's own)")
+    p.add_argument("--schedule-mn-min", type=float, default=None,
+                    help="cycling presets only: w_MN (attraction/global structure) at the local "
+                         "end of the sweep. Must be > 0 - the sweep is log-spaced, since w_MN is "
+                         "a scale parameter (default: the preset's own)")
+    p.add_argument("--schedule-mn-max", type=float, default=None,
+                    help="cycling presets only: w_MN at the global end of the sweep, where each "
+                         "cycle starts (default: the preset's own)")
+    p.add_argument("--schedule-fp-min", type=float, default=None,
+                    help="cycling presets only: w_FP (repulsion) at the condensed end of the "
+                         "sweep. Set --schedule-fp-min/--schedule-fp-max apart to cycle the "
+                         "repulsive channel alongside the attractive one (default: the preset's own)")
+    p.add_argument("--schedule-fp-max", type=float, default=None,
+                    help="cycling presets only: w_FP at the spread-out end of the sweep, where the "
+                         "embedding expands and untangles (default: the preset's own)")
+    p.add_argument("--schedule-fp-phase", type=float, default=None,
+                    help="cycling presets only: w_FP's phase offset from w_MN, in cycles. 0.5 "
+                         "(antiphase) troughs repulsion exactly when global attraction peaks, so "
+                         "the condense and expand halves reinforce rather than cancel "
+                         "(default: the preset's own)")
     p.add_argument("--seed", type=int, default=None,
                     help=f"(default: {d['seed']})")
     p.add_argument("--n-lines", type=str, default=None,
@@ -185,6 +225,13 @@ def build_config(args):
         "fp_ratio": args.fp_ratio,
         "low_dist_thres": args.low_dist_thres,
         "num_iters": [int(x) for x in args.num_iters.split(",")] if args.num_iters else None,
+        "schedule_preset": args.schedule_preset,
+        "schedule_period": args.schedule_period,
+        "schedule_mn_min": args.schedule_mn_min,
+        "schedule_mn_max": args.schedule_mn_max,
+        "schedule_fp_min": args.schedule_fp_min,
+        "schedule_fp_max": args.schedule_fp_max,
+        "schedule_fp_phase": args.schedule_fp_phase,
         "seed": args.seed,
         "n_lines": parse_count_arg(args.n_lines) if args.n_lines is not None else None,
         "step": args.step,

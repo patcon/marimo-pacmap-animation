@@ -192,3 +192,82 @@ def test_build_config_low_dist_thres_cli_flag_wins_over_config_file(tmp_path):
     config_path.write_text(json.dumps({"low_dist_thres": 7.0}))
     cfg = cli.build_config(cli.parse_args(["--config", str(config_path), "--low-dist-thres", "2.0"]))
     assert cfg["low_dist_thres"] == 2.0
+
+
+def test_build_config_schedule_preset_defaults_to_vanilla():
+    """Vanilla is the default so that landing this feature changes nothing
+    about an existing invocation - including its cached fits."""
+    cfg = cli.build_config(cli.parse_args([]))
+    assert cfg["schedule_preset"] == "vanilla"
+
+
+def test_build_config_schedule_knobs_default_to_the_presets_own():
+    """None means "whatever this preset defaults to" - a concrete default here
+    would override every preset back into the same shape."""
+    cfg = cli.build_config(cli.parse_args([]))
+    assert cfg["schedule_period"] is None
+    assert cfg["schedule_mn_min"] is None
+    assert cfg["schedule_mn_max"] is None
+
+
+def test_build_config_schedule_preset_flag_overrides_default():
+    cfg = cli.build_config(cli.parse_args(["--schedule-preset", "cycle"]))
+    assert cfg["schedule_preset"] == "cycle"
+
+
+def test_build_config_schedule_knob_flags_override_defaults():
+    cfg = cli.build_config(cli.parse_args([
+        "--schedule-preset", "cycle",
+        "--schedule-period", "250",
+        "--schedule-mn-min", "0.5",
+        "--schedule-mn-max", "50",
+    ]))
+    assert cfg["schedule_period"] == 250
+    assert cfg["schedule_mn_min"] == 0.5
+    assert cfg["schedule_mn_max"] == 50.0
+
+
+def test_parse_args_schedule_preset_rejects_invalid_choice():
+    with pytest.raises(SystemExit):
+        cli.parse_args(["--schedule-preset", "bogus"])
+
+
+def test_build_config_schedule_preset_settable_from_a_config_file(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"schedule_preset": "cycle", "schedule_period": 300}))
+    cfg = cli.build_config(cli.parse_args(["--config", str(config_path)]))
+    assert cfg["schedule_preset"] == "cycle"
+    assert cfg["schedule_period"] == 300
+
+
+def test_build_config_schedule_cli_flag_wins_over_config_file(tmp_path):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"schedule_preset": "vanilla", "schedule_period": 300}))
+    cfg = cli.build_config(cli.parse_args([
+        "--config", str(config_path), "--schedule-preset", "cycle", "--schedule-period", "50",
+    ]))
+    assert cfg["schedule_preset"] == "cycle"
+    assert cfg["schedule_period"] == 50
+
+
+def test_cycle_preset_holds_repulsion_unless_asked_otherwise():
+    """cycle sweeps attraction alone by default: w_FP's bounds coincide at 1.0,
+    which is the vanilla value."""
+    d = cli.schedule.preset_defaults("cycle")
+    assert d["fp_min"] == 1.0 and d["fp_max"] == 1.0
+    assert d["fp_phase"] == 0.5  # antiphase, once the bounds are opened up
+
+
+def test_build_config_fp_knob_flags_override_defaults():
+    cfg = cli.build_config(cli.parse_args([
+        "--schedule-preset", "cycle", "--schedule-fp-min", "0.2",
+        "--schedule-fp-max", "5", "--schedule-fp-phase", "0",
+    ]))
+    assert cfg["schedule_fp_min"] == 0.2
+    assert cfg["schedule_fp_max"] == 5.0
+    assert cfg["schedule_fp_phase"] == 0.0
+
+
+def test_parse_args_accepts_the_breathe_preset():
+    cfg = cli.build_config(cli.parse_args(["--schedule-preset", "breathe"]))
+    assert cfg["schedule_preset"] == "breathe"
