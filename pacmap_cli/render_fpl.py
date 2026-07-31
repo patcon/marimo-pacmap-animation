@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 
+from .datasets import CATEGORICAL_CMAP
 from .fp_history import checkpoint_index_for_frame
 from .overlay import compute_overlay_text
 from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
@@ -108,6 +109,7 @@ def _build_renderer_fpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     rotate=False,
 ):
     """fastplotlib counterpart to render.py's `_build_renderer()` (and, for
@@ -212,7 +214,7 @@ def _build_renderer_fpl(
 
     scat = sub.add_scatter(
         np.ascontiguousarray(trace[0], dtype=np.float32),
-        cmap="tab10", cmap_transform=y, sizes=point_size,
+        cmap=cmap, cmap_transform=y, sizes=point_size,
     )
     scat.colors[:, -1] = point_alpha
     # With OPAQUE_POINTS the points keep the default depth-writing mode, which
@@ -380,6 +382,7 @@ def render_frame_fpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     n_components=2, rotate=False,
 ):
     """Render a single trace index `frame` as a png via fastplotlib."""
@@ -391,7 +394,7 @@ def render_frame_fpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-        rotate=rotate,
+        cmap=cmap, rotate=rotate,
     )
     print(f"Rendering iteration {frame} of {total} to {out_path}...")
     t0 = time.time()
@@ -408,6 +411,7 @@ def render_animation_fpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     start=None, end=None,
     n_components=2, rotate=False,
 ):
@@ -424,7 +428,7 @@ def render_animation_fpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
-        rotate=rotate,
+        cmap=cmap, rotate=rotate,
     )
     start = 0 if start is None else start
     end = total if end is None else end

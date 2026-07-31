@@ -65,14 +65,14 @@ def test_render_dispatch_uses_registry_backend(monkeypatch):
 # --- filename marker ---
 
 def test_main_fastplotlib_filename_gets_fpl_marker(tmp_path, monkeypatch):
-    def fake_load_mnist(n=None, seed=0):
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
         rs = np.random.RandomState(seed)
         n_points = 60 if n is None else int(n)
         X = rs.rand(n_points, 784).astype(np.float32)
         y = rs.randint(0, 10, size=n_points)
-        return X, y, rs
+        return X, y, rs, cli.datasets.dataset_meta(spec, color)
 
-    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
 
     def fake_backend():
         def write(out_path=None, **kwargs):
@@ -94,7 +94,7 @@ def test_main_fastplotlib_filename_gets_fpl_marker(tmp_path, monkeypatch):
         "--output-dir", str(out_dir),
     ])
 
-    assert (out_dir / "pacmap_mnist_fpl.mp4").exists()
+    assert (out_dir / "mnist" / "pacmap_fpl.mp4").exists()
 
 
 # --- Task 2: optional dependency + lazy-import guard ---

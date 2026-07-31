@@ -16,19 +16,37 @@ matplotlib.use("Agg")
 from _loader import cli
 
 
+def _synthetic_data(n=None, seed=0, n_features=784, n_labels=10):
+    """MNIST-shaped data without MNIST: same (X, y, rs) contract every loader
+    returns, small enough for a real fit in a test."""
+    rs = np.random.RandomState(seed)
+    n_points = 60 if n is None else int(n)
+    X = rs.rand(n_points, n_features).astype(np.float32)
+    y = rs.randint(0, n_labels, size=n_points)
+    return X, y, rs
+
+
 @pytest.fixture
 def synthetic_mnist(monkeypatch):
-    def fake_load_mnist(n=None, seed=0):
-        rs = np.random.RandomState(seed)
-        n_points = 60 if n is None else int(n)
-        X = rs.rand(n_points, 784).astype(np.float32)
-        y = rs.randint(0, 10, size=n_points)
-        return X, y, rs
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
+        X, y, rs = _synthetic_data(n=n, seed=seed)
+        return X, y, rs, cli.datasets.dataset_meta(spec, color)
 
-    # load_mnist is called as `load_mnist(...)` inside orchestrate.py, which
+    # load_dataset is called as `load_dataset(...)` inside orchestrate.py, which
     # resolves it as a global in orchestrate's own module namespace - not the
     # entry shim's re-exported copy - so it must be patched there.
-    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
+
+
+@pytest.fixture
+def synthetic_polis(monkeypatch):
+    """A Polis-shaped run with no submodule and no network: a small vote-like
+    matrix and integer group ids, loaded through the same seam."""
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
+        X, y, rs = _synthetic_data(n=n, seed=seed, n_features=25, n_labels=3)
+        return np.round(X * 2 - 1).astype(np.float32), y, rs, cli.datasets.dataset_meta(spec, color)
+
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
 
 
 def test_main_renders_mp4_for_pacmap(tmp_path, synthetic_mnist):
@@ -43,7 +61,7 @@ def test_main_renders_mp4_for_pacmap(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist.mp4"
+    out_file = out_dir / "mnist" / "pacmap.mp4"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
 
@@ -61,7 +79,7 @@ def test_main_renders_single_frame_png_for_iter(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist_iter3.png"
+    out_file = out_dir / "mnist" / "pacmap_iter3.png"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
 
@@ -69,7 +87,7 @@ def test_main_renders_single_frame_png_for_iter(tmp_path, synthetic_mnist):
 def test_fit_trace_captures_localmap_fp_history(synthetic_mnist):
     import pacmap
 
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
     original_sample_fn = pacmap.pacmap.sample_FP_pair_nearby
     num_iters = (5, 5, 25)
 
@@ -91,7 +109,7 @@ def test_fit_trace_captures_localmap_fp_history(synthetic_mnist):
 
 
 def test_fit_trace_pacmap_has_single_checkpoint_fp_history(synthetic_mnist):
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
 
     trace, pair_neighbors, pair_MN, pair_FP_history = cli.fit_trace(
         X, "pacmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
@@ -126,7 +144,7 @@ def reducer_kwargs_spy(monkeypatch):
 
 
 def test_fit_trace_passes_low_dist_thres_to_localmap(synthetic_mnist, reducer_kwargs_spy):
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
 
     cli.fit_trace(
         X, "localmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
@@ -137,7 +155,7 @@ def test_fit_trace_passes_low_dist_thres_to_localmap(synthetic_mnist, reducer_kw
 
 
 def test_fit_trace_defaults_low_dist_thres_to_pacmaps_own_default(synthetic_mnist, reducer_kwargs_spy):
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
 
     cli.fit_trace(
         X, "localmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
@@ -150,7 +168,7 @@ def test_fit_trace_defaults_low_dist_thres_to_pacmaps_own_default(synthetic_mnis
 def test_fit_trace_does_not_pass_low_dist_thres_to_pacmap(synthetic_mnist, reducer_kwargs_spy):
     # PaCMAP.__init__ has no such param - passing it would be a TypeError, so
     # the LocalMAP-only kwarg has to be dropped for the pacmap algorithm.
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
 
     cli.fit_trace(
         X, "pacmap", n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0,
@@ -163,7 +181,7 @@ def test_fit_trace_does_not_pass_low_dist_thres_to_pacmap(synthetic_mnist, reduc
 def test_low_dist_thres_changes_the_localmap_far_pair_graph(synthetic_mnist):
     """The knob actually does something: a much tighter acceptance distance
     yields a different resampled far-pair set from the default."""
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
     kwargs = dict(n_neighbors=5, mn_ratio=0.5, fp_ratio=2.0, num_iters=(5, 5, 25), seed=0)
 
     *_, default_history = cli.fit_trace(X, "localmap", **kwargs, low_dist_thres=10.0)
@@ -186,7 +204,7 @@ def test_main_renders_png_for_n_components_3(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist_3d_iter3.png"
+    out_file = out_dir / "mnist" / "pacmap_3d_iter3.png"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
 
@@ -206,7 +224,7 @@ def test_main_renders_png_for_n_components_3_with_v3_edges(tmp_path, synthetic_m
     ]
     cli.main(argv)
 
-    out_file = out_dir / "localmap_mnist_3d_iter3.png"
+    out_file = out_dir / "mnist" / "localmap_3d_iter3.png"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
 
@@ -224,7 +242,7 @@ def test_main_n_components_3_filename_gets_3d_marker(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist_3d.mp4"
+    out_file = out_dir / "mnist" / "pacmap_3d.mp4"
     assert out_file.exists()
     assert out_file.stat().st_size > 0
 
@@ -241,7 +259,7 @@ def test_main_n_components_2_filename_unchanged(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist.mp4"
+    out_file = out_dir / "mnist" / "pacmap.mp4"
     assert out_file.exists()
 
 
@@ -259,12 +277,12 @@ def test_main_n_components_3_iter_png_gets_3d_marker(tmp_path, synthetic_mnist):
     ]
     cli.main(argv)
 
-    out_file = out_dir / "pacmap_mnist_3d_iter3.png"
+    out_file = out_dir / "mnist" / "pacmap_3d_iter3.png"
     assert out_file.exists()
 
 
 def test_fit_trace_n_components_3_produces_3_column_trace(synthetic_mnist):
-    X, y, rs = cli.orchestrate.load_mnist(n=60, seed=0)
+    X, y, rs = _synthetic_data(n=60, seed=0)
     num_iters = (2, 2, 2)
 
     trace, pair_neighbors, pair_MN, pair_FP_history = cli.fit_trace(
@@ -316,7 +334,7 @@ def test_main_second_identical_run_does_not_refit(tmp_path, synthetic_mnist, mon
     monkeypatch.setattr(cli.fit, "_fit_uncached", boom)
     cli.main(_cache_argv(tmp_path / "run2", cache_dir))
 
-    assert (tmp_path / "run2" / "pacmap_mnist_iter3.png").exists()
+    assert (tmp_path / "run2" / "mnist" / "pacmap_iter3.png").exists()
 
 
 def test_main_no_cache_flag_writes_no_cache_entry(tmp_path, synthetic_mnist):
@@ -368,9 +386,80 @@ def test_main_renders_multiple_outputs_for_comma_separated_iter(tmp_path, synthe
     ]
     cli.main(argv)
 
-    png_3 = out_dir / "pacmap_mnist_iter3.png"
-    png_5 = out_dir / "pacmap_mnist_iter5.png"
-    mp4_2_4 = out_dir / "pacmap_mnist_iter2-4.mp4"
+    png_3 = out_dir / "mnist" / "pacmap_iter3.png"
+    png_5 = out_dir / "mnist" / "pacmap_iter5.png"
+    mp4_2_4 = out_dir / "mnist" / "pacmap_iter2-4.mp4"
     for out_file in (png_3, png_5, mp4_2_4):
         assert out_file.exists()
         assert out_file.stat().st_size > 0
+
+
+# --- dataset -> directory, colour -> filename ---
+
+def _iter_argv(out_dir, *extra):
+    return [
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-lines", "5",
+        "--iter", "3",
+        "--output-dir", str(out_dir),
+        *extra,
+    ]
+
+
+def test_main_puts_a_polis_run_in_its_own_dataset_directory(tmp_path, synthetic_polis):
+    out_dir = tmp_path / "run"
+    cli.main(_iter_argv(out_dir, "--dataset", "polis:35bmpjr8um"))
+
+    assert (out_dir / "polis-35bmpjr8um" / "pacmap_iter3.png").exists()
+
+
+def test_main_dataset_directory_nests_above_the_param_tag(tmp_path, synthetic_mnist):
+    out_dir = tmp_path / "run"
+    cli.main(_iter_argv(out_dir, "--tag-output"))
+
+    tag_dirs = [p for p in (out_dir / "mnist").iterdir() if p.is_dir()]
+    assert len(tag_dirs) == 1
+    assert (tag_dirs[0] / "pacmap_iter3.png").exists()
+
+
+def test_main_default_color_leaves_the_filename_unmarked(tmp_path, synthetic_polis):
+    out_dir = tmp_path / "run"
+    cli.main(_iter_argv(out_dir, "--dataset", "polis:abc", "--color", "polis:group-id"))
+
+    assert (out_dir / "polis-abc" / "pacmap_iter3.png").exists()
+
+
+def test_main_non_default_color_marks_the_filename(tmp_path, synthetic_polis):
+    out_dir = tmp_path / "run"
+    cli.main(_iter_argv(out_dir, "--dataset", "polis:abc", "--color", "polis:n-votes"))
+
+    assert (out_dir / "polis-abc" / "pacmap_colorn-votes_iter3.png").exists()
+
+
+def test_main_rejects_focus_label_against_a_continuous_color(tmp_path, synthetic_polis):
+    # --focus-label compares y for equality, which is meaningless against a
+    # magnitude - it must say so rather than silently matching a float.
+    argv = _iter_argv(tmp_path / "run", "--dataset", "polis:abc",
+                      "--color", "polis:n-votes", "--focus-label", "1")
+    with pytest.raises(ValueError, match="focus-label"):
+        cli.main(argv)
+
+
+def test_main_focus_label_still_works_with_a_categorical_color(tmp_path, synthetic_polis):
+    out_dir = tmp_path / "run"
+    cli.main(_iter_argv(out_dir, "--dataset", "polis:abc", "--focus-label", "1"))
+
+    assert next((out_dir / "polis-abc").glob("pacmap*.png"), None) is not None
+
+
+def test_main_records_the_dataset_in_the_cache_entry_metadata(tmp_path, synthetic_polis):
+    import json
+
+    cache_dir = tmp_path / "fits"
+    cli.main(_iter_argv(tmp_path / "run", "--dataset", "polis:abc", "--cache-dir", str(cache_dir)))
+
+    meta = json.loads(next(cache_dir.glob("pacmap_*/meta.json")).read_text())
+    assert meta["dataset"] == "polis:abc"

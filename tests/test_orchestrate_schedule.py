@@ -16,10 +16,11 @@ def harness(monkeypatch):
     kwargs each was handed."""
     captured = {"fit": [], "render": []}
 
-    def fake_load_mnist(n=None, seed=0):
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
         rs = np.random.RandomState(seed)
         n_points = 60 if n is None else int(n)
-        return rs.rand(n_points, 784).astype(np.float32), rs.randint(0, 10, size=n_points), rs
+        return (rs.rand(n_points, 784).astype(np.float32), rs.randint(0, 10, size=n_points), rs,
+                cli.datasets.dataset_meta(spec, color))
 
     def fake_fit_trace(X, algorithm, **kwargs):
         captured["fit"].append({"algorithm": algorithm, **kwargs})
@@ -40,7 +41,7 @@ def harness(monkeypatch):
             return out_path
         return {"animation": write, "frame": write}
 
-    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
     monkeypatch.setattr(cli.orchestrate, "fit_trace", fake_fit_trace)
     monkeypatch.setitem(cli.render.RENDERERS, "matplotlib", fake_backend)
     return captured

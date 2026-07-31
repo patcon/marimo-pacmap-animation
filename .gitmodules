@@ -1,0 +1,3 @@
+[submodule "vendor/valency-anndata"]
+	path = vendor/valency-anndata
+	url = https://github.com/patcon/valency-anndata

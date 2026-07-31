@@ -4,7 +4,7 @@ import numpy as np
 
 from .camera import camera_path
 from .config import build_config, parse_args, resolve_focus_label
-from .data import load_mnist
+from .datasets import CATEGORICAL_CMAP, color_marker, dataset_meta, is_continuous, load_dataset
 from .fit import fit_trace
 from .paths import param_tag, resolve_output_dir, unique_path
 from .render import RENDERER_FILE_MARKERS, render_animation, render_frame
@@ -40,10 +40,14 @@ def schedule_for(cfg):
     return build_schedule(cfg["schedule_preset"], cfg["num_iters"], **resolve_schedule_knobs(cfg))
 
 
-def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
+def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths, cmap=CATEGORICAL_CMAP):
     """Fit once, then render one output per (iter_item, out_path) pair in
     iter_out_paths - iter_item is None (full range), an int (single-iteration
-    png), or a (start, end) tuple (range mp4)."""
+    png), or a (start, end) tuple (range mp4).
+
+    `cmap` is the colormap the chosen color scheme resolved to (see
+    datasets.py); it's a loaded-data property rather than a config field, so
+    it arrives alongside `y` rather than inside `cfg`."""
     # Built once and used twice: to drive the fit, and to display what drove
     # it. Passing `schedule=None` for vanilla leaves pacmap's own schedule
     # entirely unpatched rather than re-deriving an identical one.
@@ -60,6 +64,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         low_dist_thres=cfg["low_dist_thres"],
         schedule=None if cfg["schedule_preset"] == "vanilla" else S,
         schedule_params=schedule_params_for(cfg),
+        dataset=cfg["dataset"],
         cache_dir=cfg["cache_dir"] if cfg["cache"] else None,
     )
     W = np.vstack([S[0], S])  # prepend the init frame so index == snapshot index
@@ -80,6 +85,7 @@ def run_algorithm(X, y, rs, algorithm, cfg, iter_out_paths):
         n_components=cfg["n_components"],
         rotate=cfg["rotate"],
         renderer=cfg["renderer"],
+        cmap=cmap,
     )
 
     results = []
@@ -102,10 +108,18 @@ def main(argv=None):
     args = parse_args(argv)
     cfg = build_config(args)
 
+    # Resolved without loading anything, so a bad --dataset/--color pairing
+    # fails immediately rather than after a download and a fit.
+    meta = dataset_meta(cfg["dataset"], cfg["color"])
+    if cfg["focus_label"] is not None and is_continuous(meta["color"]):
+        raise ValueError(
+            f"--focus-label needs a categorical color scheme to compare against, but "
+            f"--color {meta['color']} is a continuous magnitude")
+
     # Loaded before output-path resolution (cheap) so --focus-label can be
     # prompted against the real label set; the expensive step (fit_trace)
     # still stays gated behind the overwrite-confirmation below.
-    X, y, rs = load_mnist(n=cfg["n"], seed=cfg["seed"])
+    X, y, rs, _meta = load_dataset(cfg["dataset"], n=cfg["n"], seed=cfg["seed"], color=cfg["color"])
     cfg["focus_label"] = resolve_focus_label(cfg["focus_label"], y)
 
     # The default camera only ever zooms out (a monotonic ratchet), so a
@@ -114,7 +128,11 @@ def main(argv=None):
         print(f"note: --schedule-preset {cfg['schedule_preset']} makes the embedding expand and "
               "contract; the default camera only zooms out, so consider --fixed-camera")
 
-    output_dir = resolve_output_dir(cfg["output_dir"])
+    # The dataset is always a directory level of its own (outputs/mnist/,
+    # outputs/polis-35bmpjr8um/), above any --tag-output slug: it identifies
+    # *what was embedded* rather than a tunable of one render, and it applies
+    # to a custom --output-dir too, so there's one rule rather than a case.
+    output_dir = resolve_output_dir(cfg["output_dir"]) / meta["slug"]
     if args.tag_output:
         output_dir = output_dir / param_tag(cfg)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -141,12 +159,15 @@ def main(argv=None):
     # Same idea for the renderer: a marker (e.g. _fpl) rather than a tag-slug
     # entry, so backend-comparison runs land side by side in one directory.
     renderer_marker = RENDERER_FILE_MARKERS[cfg["renderer"]]
+    # Color is a rendering choice, so it marks the filename rather than the
+    # directory: two colorings of one fit land side by side.
+    color_mark = color_marker(meta["dataset"], meta["color"])
 
     # Resolve (and confirm any overwrite of) output filenames before running
     # any computation, so approval doesn't happen after a long fit/render.
     out_paths = {
         a: [
-            (iter_item, unique_path(output_dir / f"{a}_mnist{dim_marker}{renderer_marker}{suffix}.{ext}"))
+            (iter_item, unique_path(output_dir / f"{a}{dim_marker}{renderer_marker}{color_mark}{suffix}.{ext}"))
             for iter_item in iter_items
             for suffix, ext in [_suffix_ext(iter_item)]
         ]
@@ -154,4 +175,4 @@ def main(argv=None):
     }
 
     for algorithm in algorithms:
-        run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm])
+        run_algorithm(X, y, rs, algorithm, cfg, out_paths[algorithm], cmap=meta["cmap"])

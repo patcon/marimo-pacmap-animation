@@ -25,7 +25,7 @@ orchestrate). This file re-exports everything so it can still be imported
 directly (e.g. from a notebook) exactly as before the split.
 """
 
-from pacmap_cli import cache, camera, config, data, fit, fp_history, orchestrate, overlay, pairs, paths, render, render_fpl, schedule
+from pacmap_cli import cache, camera, config, data, datasets, datasets_polis, fit, fp_history, orchestrate, overlay, pairs, paths, render, render_fpl, schedule
 from pacmap_cli.cache import fit_key, load_fit, save_fit
 from pacmap_cli.camera import camera_path, weight_schedule
 from pacmap_cli.config import (
@@ -37,7 +37,16 @@ from pacmap_cli.config import (
     parse_iter_arg,
     resolve_focus_label,
 )
-from pacmap_cli.data import load_mnist, resolve_proportion
+from pacmap_cli.data import load_mnist, resolve_proportion, subsample_indices
+from pacmap_cli.datasets import (
+    DATASETS,
+    color_marker,
+    dataset_meta,
+    dataset_slug,
+    load_dataset,
+    parse_dataset_spec,
+    resolve_color,
+)
 from pacmap_cli.fit import fit_trace
 from pacmap_cli.fp_history import capture_fp_history, checkpoint_index_for_frame, fp_resample_iterations
 from pacmap_cli.orchestrate import main, run_algorithm

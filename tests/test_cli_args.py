@@ -271,3 +271,42 @@ def test_build_config_fp_knob_flags_override_defaults():
 def test_parse_args_accepts_the_breathe_preset():
     cfg = cli.build_config(cli.parse_args(["--schedule-preset", "breathe"]))
     assert cfg["schedule_preset"] == "breathe"
+
+
+def test_build_config_dataset_defaults_to_mnist():
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["dataset"] == "mnist"
+
+
+def test_build_config_dataset_flag_carries_the_whole_spec():
+    args = cli.parse_args(["--dataset", "polis:35bmpjr8um"])
+    cfg = cli.build_config(args)
+    assert cfg["dataset"] == "polis:35bmpjr8um"
+
+
+def test_build_config_color_defaults_to_none_meaning_the_datasets_own():
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["color"] is None
+
+
+def test_build_config_color_flag_overrides_default():
+    args = cli.parse_args(["--dataset", "polis:abc", "--color", "polis:n-votes"])
+    cfg = cli.build_config(args)
+    assert cfg["color"] == "polis:n-votes"
+
+
+def test_build_config_dataset_settable_from_a_config_file(tmp_path):
+    path = tmp_path / "cfg.json"
+    path.write_text(json.dumps({"dataset": "polis:abc", "color": "polis:n-votes"}))
+    cfg = cli.build_config(cli.parse_args(["--config", str(path)]))
+    assert cfg["dataset"] == "polis:abc"
+    assert cfg["color"] == "polis:n-votes"
+
+
+def test_build_config_dataset_cli_flag_wins_over_config_file(tmp_path):
+    path = tmp_path / "cfg.json"
+    path.write_text(json.dumps({"dataset": "polis:abc"}))
+    cfg = cli.build_config(cli.parse_args(["--config", str(path), "--dataset", "mnist"]))
+    assert cfg["dataset"] == "mnist"

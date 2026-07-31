@@ -154,3 +154,36 @@ def test_count_drawn_handles_empty_pair_types():
         "edges_further": 0,
         "edges_total": 0,
     }
+
+
+# --- subsample_indices: what --n resolves to at load time ---
+
+def test_subsample_indices_none_keeps_every_row_in_order():
+    import numpy as np
+
+    idx = cli.subsample_indices(5, None, np.random.RandomState(0))
+    assert list(idx) == [0, 1, 2, 3, 4]
+
+
+def test_subsample_indices_draws_the_requested_count():
+    import numpy as np
+
+    idx = cli.subsample_indices(100, 10, np.random.RandomState(0))
+    assert len(idx) == 10
+    assert len(set(idx.tolist())) == 10
+
+
+def test_subsample_indices_resolves_a_fraction_against_the_total():
+    import numpy as np
+
+    assert len(cli.subsample_indices(100, 0.25, np.random.RandomState(0))) == 25
+
+
+def test_subsample_indices_clamps_a_count_larger_than_the_dataset():
+    # Polis conversations are far smaller than MNIST, so the default --n 5000
+    # routinely exceeds the population. That's a smaller dataset, not an error
+    # - the same clamp subsample_pairs_indices() already applies to --n-lines.
+    import numpy as np
+
+    idx = cli.subsample_indices(138, 5000, np.random.RandomState(0))
+    assert list(idx) == list(range(138))
