@@ -37,7 +37,7 @@ from pacmap_cli.config import (
     parse_iter_arg,
     resolve_focus_label,
 )
-from pacmap_cli.data import load_mnist, resolve_proportion
+from pacmap_cli.data import load_mnist, resolve_proportion, subsample_indices
 from pacmap_cli.datasets import (
     DATASETS,
     color_marker,

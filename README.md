@@ -63,6 +63,16 @@ id, a `hf:user/dataset` slug, a pol.is URL, or a local CSV export directory.
 Color them by cluster (`--color polis:group-id`, the default) or by how much
 each participant voted (`--color polis:n-votes`).
 
+`<source>` also takes any of the
+[reference conversations](https://patcon.github.io/valency-anndata/api/datasets/)
+valency-anndata curates, by name — with a variant where the dataset has several:
+
+```bash
+--dataset polis:japanchoice:2025_foreign_affairs_security
+--dataset polis:vtaiwan:uber
+--dataset polis:aufstehen
+```
+
 This path is backed by the vendored
 [valency-anndata](https://github.com/patcon/valency-anndata) submodule, which
 owns all the Polis-specific work — including the vote-matrix imputation, which is

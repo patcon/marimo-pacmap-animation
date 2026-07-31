@@ -10,6 +10,10 @@ CLI consumes.
 What was verified about that package's API (v0.4.0, submodule pinned by SHA),
 since none of it is guessable from the outside:
 
+- `val.datasets` exposes both a generic `polis.load(source)` and one function
+  per curated reference conversation (`japanchoice(topic)`, `vtaiwan(topic)`,
+  `aufstehen()`, ...), listed in its `__all__`. Which one a `--dataset
+  polis:<source>` value reaches is decided by `_load_source()` below.
 - `val.datasets.polis.load(source)` returns an AnnData of shape
   (participants, statements) with votes in {-1, 0, +1} and NaN for unvoted -
   ~70% NaN on a real conversation, so it is not directly fittable.
@@ -35,7 +39,7 @@ import warnings
 
 import numpy as np
 
-from .data import resolve_proportion
+from .data import subsample_indices
 
 # Keys valency-anndata writes, named here so a package change surfaces as one
 # failure with a clear cause rather than a KeyError deep in this module.
@@ -68,6 +72,52 @@ def _import_valency():
     return val
 
 
+# Names in `val.datasets.__all__` that aren't conversations, so a source
+# starting with one is a plain source rather than a reference dataset.
+_NOT_REFERENCE_DATASETS = {"load", "translate_statements"}
+
+
+def _reference_loaders(val):
+    """The named reference conversations the package ships, `{name: callable}`.
+
+    Read off `val.datasets` rather than duplicated here, so a dataset added
+    upstream is usable through `--dataset polis:<name>` with no change on this
+    side (and a submodule bump is the only thing that gates it).
+    """
+    return {
+        name: getattr(val.datasets, name)
+        for name in getattr(val.datasets, "__all__", [])
+        if name not in _NOT_REFERENCE_DATASETS and callable(getattr(val.datasets, name, None))
+    }
+
+
+def _load_source(val, source):
+    """Dispatch one `--dataset polis:<source>` value to the right entry point.
+
+    Two forms, distinguished by whether the leading segment names one of the
+    package's reference conversations:
+
+    - `japanchoice:2025_foreign_affairs_security` -> `val.datasets.japanchoice(
+      "2025_foreign_affairs_security")`, and `aufstehen` -> `val.datasets
+      .aufstehen()` for the ones that take no variant;
+    - anything else -> `val.datasets.polis.load(source)` verbatim: a
+      conversation/report id, a pol.is URL, an `hf:user/dataset` slug (whose
+      colon must survive the split), or a local export directory.
+    """
+    name, _sep, variant = source.partition(":")
+    loader = _reference_loaders(val).get(name)
+    if loader is None:
+        return val.datasets.polis.load(source)
+    try:
+        return loader(variant) if variant else loader()
+    except TypeError as e:
+        # The variant-taking loaders declare it positionally, so omitting it
+        # is a TypeError rather than something the package explains.
+        raise ValueError(
+            f"the {name!r} dataset needs a variant, e.g. "
+            f"--dataset polis:{name}:<variant> (see {name}'s docstring for the list)") from e
+
+
 def _ensure_is_meta(adata):
     """`recipe_polis` refuses to build its zero-mask when no statement carries
     is-meta data. A minimal CSV export simply has no such column, so treat
@@ -96,23 +146,24 @@ def load_polis(source, n=None, seed=0, color="polis:group-id"):
     """Load a Polis conversation, optionally subsampled to `n` participants (or
     a proportion of them if `n` is a float in (0, 1]). `n=None` keeps all.
 
-    `source` is anything valency-anndata accepts: a conversation id, a report
-    id, a `hf:user/dataset` slug, a pol.is URL, or a local CSV export directory.
+    `source` is either one of the package's named reference conversations
+    (`japanchoice:2025_foreign_affairs_security`, `aufstehen`) or anything its
+    generic loader accepts: a conversation id, a report id, a `hf:user/dataset`
+    slug, a pol.is URL, or a local CSV export directory. See `_load_source()`.
     Returns `(X, y, rs)` like `load_mnist`, with `y` holding whichever color
     scheme was asked for.
     """
     val = _import_valency()
 
-    adata = val.datasets.polis.load(source)
+    adata = _load_source(val, source)
     _ensure_is_meta(adata)
     val.tl.recipe_polis(adata)
 
     Xfull = np.ascontiguousarray(adata.layers[DENSE_LAYER], dtype=np.float32)
     yfull = _vote_counts(adata) if color == "polis:n-votes" else _group_labels(adata)
 
-    n = resolve_proportion(n, len(Xfull))
     rs = np.random.RandomState(seed)
-    sel = np.arange(len(Xfull)) if n is None else rs.choice(len(Xfull), n, replace=False)
+    sel = subsample_indices(len(Xfull), n, rs)
 
     X, y = np.ascontiguousarray(Xfull[sel]), yfull[sel]
     print(f"{X.shape} {X.dtype} participants x statements, color={color} "
