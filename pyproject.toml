@@ -18,6 +18,18 @@ fastplotlib = [
     "fastplotlib==0.6.1",
     "imageio-ffmpeg==0.6.0",
 ]
+# Optional Polis data source (--dataset polis:<source>): enable with
+# `uv run --extra polis python pacmap_animation_mnist.cli.py ...`. Installed
+# from the vendored git submodule (see vendor/valency-anndata), which must be
+# checked out first: `git submodule update --init`. Unpinned deliberately -
+# it's a path dependency on a pinned submodule commit, so the submodule's SHA
+# is the version.
+polis = [
+    "valency-anndata",
+]
+
+[tool.uv.sources]
+valency-anndata = { path = "vendor/valency-anndata", editable = true }
 
 [dependency-groups]
 dev = ["pytest"]
