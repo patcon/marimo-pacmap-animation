@@ -3,10 +3,13 @@
 import argparse
 import json
 
+from .datasets import COLOR_SCHEMES, DATASETS
 from .schedule import PRESETS
 
 
 DEFAULT_CONFIG = {
+    "dataset": "mnist",        # "<name>" or "<name>:<source>"; see datasets.py
+    "color": None,             # None = whatever scheme this dataset defaults to; see datasets.COLOR_SCHEMES
     "n": 5000,
     "algorithm": "both",       # "pacmap", "localmap", or "both"
     "n_components": 2,        # 2 or 3; 3 renders via the 3D renderer
@@ -85,6 +88,16 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--config", type=str, default=None,
                     help="JSON config file; CLI flags override its values. Unset fields fall back to the built-in defaults shown below")
+    p.add_argument("--dataset", type=str, default=None,
+                    help=f"which data to embed: one of {sorted(DATASETS)}, with a source after a "
+                         f"colon where the dataset needs one (e.g. --dataset polis:35bmpjr8um, a "
+                         f"conversation/report id, hf:user/dataset slug, pol.is URL, or local "
+                         f"export directory). The dataset becomes an output directory level "
+                         f"(default: {d['dataset']})")
+    p.add_argument("--color", choices=sorted(COLOR_SCHEMES), default=None,
+                    help="what the points are colored by. Schemes are namespaced by the dataset "
+                         "they belong to; continuous ones (e.g. polis:n-votes) get a continuous "
+                         "colormap, categorical ones stay discrete (default: the dataset's own)")
     p.add_argument("--n", type=str, default=None,
                     help=f"subsample size, a fraction in (0, 1) for a proportion of the full "
                          f"~70,000 points, or 'all' for all of them (default: {d['n']})")
@@ -218,6 +231,8 @@ def build_config(args):
     if args.n is not None:
         cfg["n"] = None if args.n.strip().lower() == "all" else parse_count_arg(args.n)
     overrides = {
+        "dataset": args.dataset,
+        "color": args.color,
         "algorithm": args.algorithm,
         "n_components": args.n_components,
         "n_neighbors": args.n_neighbors,
