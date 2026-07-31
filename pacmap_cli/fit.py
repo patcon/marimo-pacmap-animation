@@ -9,7 +9,8 @@ from .schedule import override_weight_schedule
 
 
 def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42, n_components=2,
-              low_dist_thres=10.0, schedule=None, schedule_params=None, cache_dir=None):
+              low_dist_thres=10.0, schedule=None, schedule_params=None, dataset=None,
+              cache_dir=None):
     """Run PaCMAP or LocalMAP, capturing the embedding at every iteration.
 
     `low_dist_thres` is LocalMAP-only (ignored for PaCMAP): the acceptance
@@ -17,7 +18,8 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
 
     With a `cache_dir`, the result is read from / written to an on-disk cache
     keyed by the data and these params (see cache.py); `cache_dir=None`
-    always refits and writes nothing.
+    always refits and writes nothing. `dataset` names the data's origin for
+    the entry's readable metadata only - it never enters the key.
 
     Returns `pair_FP_history`, a list of `(frame, pair_FP)` checkpoints
     sorted by ascending frame - `[(0, pair_FP)]` for PaCMAP (which never
@@ -49,7 +51,12 @@ def fit_trace(X, algorithm, n_neighbors, mn_ratio, fp_ratio, num_iters, seed=42,
     result = _fit_uncached(X, algorithm, **params, schedule=schedule)
 
     if cache_dir is not None:
-        path = save_fit(cache_dir, algorithm, key, {**key_params, "pacmap_version": pacmap.__version__}, result)
+        # `dataset` is recorded but deliberately not keyed on: fit_key already
+        # hashes X itself, so two datasets can't collide, and adding it to the
+        # key would invalidate every fit cached before datasets existed.
+        meta_params = {**key_params, "pacmap_version": pacmap.__version__,
+                       **({"dataset": dataset} if dataset is not None else {})}
+        path = save_fit(cache_dir, algorithm, key, meta_params, result)
         print(f"{algorithm}: cached fit -> {path}")
     return result
 
