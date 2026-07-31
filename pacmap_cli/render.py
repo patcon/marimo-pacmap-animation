@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 
+from .datasets import CATEGORICAL_CMAP
 from .fp_history import checkpoint_index_for_frame
 from .overlay import compute_overlay_text
 from .pairs import compute_edge_alphas, count_drawn, subsample_pairs, subsample_pairs_indices
@@ -23,6 +24,7 @@ def _build_renderer(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
 ):
     """Build the figure/artists and return `(fig, update, total, BG)`, where
     `update(f)` mutates all artists in place to show trace index `f`. Shared
@@ -68,7 +70,7 @@ def _build_renderer(
     lc_nb = LineCollection([], colors=NB_COLOR, linewidths=EDGE_LINEWIDTH, zorder=3)
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection(lc)
-    scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap="tab10",
+    scat = ax.scatter(trace[0][:, 0], trace[0][:, 1], c=y, cmap=cmap,
                        s=point_size, alpha=point_alpha, linewidths=0, zorder=4)
     title = ax.text(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
     ax.text(0.02, 0.03, "neighbour", transform=ax.transAxes, color=NB_COLOR, fontsize=9)
@@ -131,6 +133,7 @@ def _build_renderer_3d(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     rotate=False,
 ):
     """3D counterpart to `_build_renderer()`: same pair-subsampling/edge-alpha
@@ -180,7 +183,7 @@ def _build_renderer_3d(
     for lc in (lc_fp, lc_mn, lc_nb):
         ax.add_collection3d(lc, autolim=False)
     Y0 = trace[0]
-    scat = ax.scatter(Y0[:, 0], Y0[:, 1], Y0[:, 2], c=y, cmap="tab10",
+    scat = ax.scatter(Y0[:, 0], Y0[:, 1], Y0[:, 2], c=y, cmap=cmap,
                        s=point_size, alpha=point_alpha, linewidths=0, zorder=4)
     title = ax.text2D(0.02, 0.97, "", transform=ax.transAxes, color="w", fontsize=11, va="top", family="monospace")
     ax.text2D(0.02, 0.03, "neighbour", transform=ax.transAxes, color=NB_COLOR, fontsize=9)
@@ -242,6 +245,7 @@ def _render_animation_mpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     start=None, end=None,
     n_components=2, rotate=False,
 ):
@@ -256,6 +260,7 @@ def _render_animation_mpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        cmap=cmap,
     )
     if n_components == 3:
         builder_kwargs["rotate"] = rotate
@@ -295,6 +300,7 @@ def _render_frame_mpl(
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
     line_alpha=1.0,
+    cmap=CATEGORICAL_CMAP,
     n_components=2, rotate=False,
 ):
     """Render a single trace index `frame` as a png. `rotate` (3D only) still
@@ -310,6 +316,7 @@ def _render_frame_mpl(
         point_size=point_size, point_alpha=point_alpha,
         edge_style_preset=edge_style_preset, edge_gamma=edge_gamma,
         overlay_style_preset=overlay_style_preset, line_alpha=line_alpha,
+        cmap=cmap,
     )
     if n_components == 3:
         builder_kwargs["rotate"] = rotate
