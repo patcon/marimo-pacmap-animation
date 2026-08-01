@@ -42,13 +42,35 @@ def test_start_and_end_narrow_the_exported_range(tmp_path):
     assert header["frames"] == 3
 
 
-def test_positions_round_trip_equal_to_the_trace(tmp_path):
+def test_positions_are_quantized_to_uint16(tmp_path):
+    """Positions are essentially the whole file -- float32 puts a full-MNIST 3D
+    trace at ~380 MB -- so they ship as uint16 against a per-frame range."""
+    header, arrays = _export(tmp_path, step=1)
+    assert arrays["positions"].dtype == np.uint16
+    assert header["arrays"]["positions"]["dtype"] == "uint16"
+
+
+def test_positions_round_trip_to_the_trace_within_a_quantization_step(tmp_path):
     inputs = synthetic_render_inputs()
     out = tmp_path / "out.pcmp"
     cli.render_animation(renderer="ogl", out_path=str(out), n_lines=5, step=1, **inputs)
 
-    _, arrays = cli.pcmp.read_pcmp(out)
-    np.testing.assert_array_equal(arrays["positions"], inputs["trace"])
+    header, arrays = cli.pcmp.read_pcmp(out)
+    back = cli.pcmp.dequantize_positions(
+        arrays["positions"], header["pos_min"], header["pos_extent"])
+
+    step = np.max(header["pos_extent"]) / cli.pcmp.QUANT_MAX
+    assert np.abs(back - inputs["trace"]).max() <= step
+
+
+def test_quantization_ranges_are_per_exported_frame(tmp_path):
+    """One row per exported frame, aligned with positions' first axis, so the
+    player reads row f directly -- the same contract weights/center/radius have."""
+    header, arrays = _export(tmp_path, step=3)
+    frames, _, dims = arrays["positions"].shape
+
+    assert np.shape(header["pos_min"]) == (frames, dims)
+    assert np.shape(header["pos_extent"]) == (frames, dims)
 
 
 def test_per_frame_metadata_is_aligned_with_the_exported_frames(tmp_path):
@@ -114,7 +136,9 @@ def test_render_frame_exports_a_single_frame(tmp_path):
     assert header["frames"] == 1
     assert header["iters"] == [4]
     assert arrays["positions"].shape == (1, 40, 2)
-    np.testing.assert_array_equal(arrays["positions"][0], inputs["trace"][4])
+    back = cli.pcmp.dequantize_positions(
+        arrays["positions"], header["pos_min"], header["pos_extent"])
+    np.testing.assert_allclose(back[0], inputs["trace"][4], atol=1e-4)
 
 
 def test_edge_arguments_are_accepted_and_ignored(tmp_path):

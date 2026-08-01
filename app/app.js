@@ -13,7 +13,7 @@ import {
 } from 'https://cdn.jsdelivr.net/npm/ogl@1.0.11/+esm';
 import { Pane } from 'https://cdn.jsdelivr.net/npm/tweakpane@4.0.5/+esm';
 
-import { parsePcmp } from './pcmp.js';
+import { parsePcmp, QUANT_MAX } from './pcmp.js';
 
 const BG = [0x0d / 255, 0x0d / 255, 0x10 / 255];
 const FOV = 45;
@@ -65,10 +65,26 @@ const readouts = { iteration: '—', phase: '—', w_MN: 0, w_NB: 0, w_FP: 0, po
 
 // ---------------------------------------------------------------- geometry
 
-function vertexShader(dims) {
+function vertexShader(dims, quantized) {
   // Templated on dims rather than padding 2D exports out to three floats: at
   // --n all that padding would be 126 MB of zeros.
   const toVec3 = dims === 2 ? 'vec3(p, 0.0)' : 'p';
+
+  // Quantized positions arrive as normalized UNSIGNED_SHORT, i.e. the GPU has
+  // already divided by 65535 during the attribute fetch -- so undoing the
+  // quantization costs one multiply-add per vertex and nothing on the CPU.
+  // Each keyframe carries its own range, so A and B decode separately and only
+  // then interpolate. Pre-quantization exports have float32 positions and no
+  // ranges; they are simply used as they are.
+  const quantUniforms = quantized ? /* glsl */ `
+    uniform vec${dims} uMinA;
+    uniform vec${dims} uExtA;
+    uniform vec${dims} uMinB;
+    uniform vec${dims} uExtB;
+  ` : '';
+  const decodeA = quantized ? 'uMinA + posA * uExtA' : 'posA';
+  const decodeB = quantized ? 'uMinB + posB * uExtB' : 'posB';
+
   return /* glsl */ `
     attribute vec${dims} posA;
     attribute vec${dims} posB;
@@ -79,12 +95,13 @@ function vertexShader(dims) {
     uniform float uT;
     uniform float uSize;
     uniform float uRefDist;
+    ${quantUniforms}
 
     varying vec3 vColor;
     varying float vFade;
 
     void main() {
-      vec${dims} p = mix(posA, posB, uT);
+      vec${dims} p = mix(${decodeA}, ${decodeB}, uT);
       vColor = color;
       vec4 mv = modelViewMatrix * vec4(${toVec3}, 1.0);
       gl_Position = projectionMatrix * mv;
@@ -118,28 +135,44 @@ const FRAGMENT = /* glsl */ `
   }
 `;
 
+/** True when this file's positions are quantized (everything since they went
+ *  uint16); false for the float32 exports that predate it. */
+function isQuantized() {
+  return data.header.arrays.positions.dtype === 'uint16';
+}
+
 function buildMesh() {
   const { header, positions, colors } = data;
   const { points, dims } = header;
   const stride = points * dims;
+  const quantized = isQuantized();
+  // normalized: the GPU maps 0..65535 onto 0..1 during the fetch, which is
+  // exactly the first half of the dequantization.
+  const pos = () => ({ size: dims, data: positions.slice(0, stride), normalized: quantized });
 
   const geometry = new Geometry(gl, {
-    posA: { size: dims, data: positions.slice(0, stride) },
-    posB: { size: dims, data: positions.slice(0, stride) },
+    posA: pos(),
+    posB: pos(),
     color: { size: 3, data: colors },
     // Drawing through an index buffer is what makes depth sorting a matter of
     // permuting `points` integers rather than re-uploading every attribute.
     index: { data: identityOrder(points) },
   });
 
+  const zeros = new Array(dims).fill(0);
   const program = new Program(gl, {
-    vertex: vertexShader(dims),
+    vertex: vertexShader(dims, quantized),
     fragment: FRAGMENT,
     uniforms: {
       uT: { value: 0 },
       uSize: { value: view.pointSize },
       uRefDist: { value: refDist },
       uAlpha: { value: view.pointAlpha },
+      // Ignored by the unquantized shader variant, which never declares them.
+      uMinA: { value: zeros.slice() },
+      uExtA: { value: zeros.slice() },
+      uMinB: { value: zeros.slice() },
+      uExtB: { value: zeros.slice() },
     },
     transparent: true,
     depthTest: false,
@@ -169,6 +202,18 @@ function setFramePair(a, b) {
   posA.needsUpdate = true;
   posB.data.set(positions.subarray(b * stride, (b + 1) * stride));
   posB.needsUpdate = true;
+
+  // Each keyframe was quantized against its own range, so the range travels
+  // with the frame. Getting this wrong would not fail loudly -- it would just
+  // render the wrong shape -- which is why the decode is pinned to Python's by
+  // tests/test_app_pcmp_js.py.
+  if (header.pos_min) {
+    const u = mesh.program.uniforms;
+    u.uMinA.value = header.pos_min[a];
+    u.uExtA.value = header.pos_extent[a];
+    u.uMinB.value = header.pos_min[b];
+    u.uExtB.value = header.pos_extent[b];
+  }
   uploaded = [a, b];
 }
 
@@ -238,11 +283,24 @@ function depthSort(f) {
   // small to reorder anything.
   const m = camera.viewMatrix;
   const [m2, m6, m10, m14] = [m[2], m[6], m[10], m[14]];
+
+  // Fold the per-frame dequantization into that matrix row instead of decoding
+  // the frame into a scratch array first -- same arithmetic, but no ~840 KB
+  // allocation per sorted frame at --n all. An unquantized (pre-uint16) file
+  // takes the identity range, which collapses these back to the raw row.
+  const q = header.pos_min ? 1 : 0;
+  const mn = q ? header.pos_min[f] : [0, 0, 0];
+  const ex = q ? header.pos_extent[f] : [QUANT_MAX, QUANT_MAX, QUANT_MAX];
+  const c0 = (m2 * ex[0]) / QUANT_MAX;
+  const c1 = (m6 * ex[1]) / QUANT_MAX;
+  const c2 = dims === 3 ? (m10 * ex[2]) / QUANT_MAX : 0;
+  const k = m14 + m2 * mn[0] + m6 * mn[1] + (dims === 3 ? m10 * mn[2] : 0);
+
   const base = f * points * dims;
   for (let i = 0; i < points; i++) {
     const o = base + i * dims;
-    const z = dims === 3 ? positions[o + 2] : 0;
-    depths[i] = m2 * positions[o] + m6 * positions[o + 1] + m10 * z + m14;
+    depths[i] = c0 * positions[o] + c1 * positions[o + 1]
+      + (dims === 3 ? c2 * positions[o + 2] : 0) + k;
   }
 
   mesh.geometry.attributes.index.data.sort((a, b) => depths[a] - depths[b]);

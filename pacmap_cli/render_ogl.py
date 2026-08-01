@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 
 from .datasets import CATEGORICAL_CMAP
-from .pcmp import write_pcmp
+from .pcmp import quantize_positions, write_pcmp
 
 
 def render_animation_ogl(
@@ -81,6 +81,11 @@ def _write(trace, y, W, num_iters, center, r_s, frames, out_path, cmap, title_pr
     idx = np.asarray(frames)
     positions = np.ascontiguousarray(trace[idx], dtype=np.float32)
     n_frames, n_points, dims = positions.shape
+    # Halves the file, which is almost entirely these coordinates, and costs
+    # the player nothing: a normalized uint16 vertex attribute is expanded to
+    # float by the GPU during the fetch. See quantize_positions for why the
+    # range is per frame rather than global.
+    quantized, pos_min, pos_extent = quantize_positions(positions)
 
     header = {
         # Enough to label the view; the dataset/algorithm identity itself is
@@ -100,8 +105,11 @@ def _write(trace, y, W, num_iters, center, r_s, frames, out_path, cmap, title_pr
         "weights": np.asarray(W)[idx].tolist(),
         "center": np.asarray(center)[idx].tolist(),
         "radius": np.asarray(r_s)[idx].tolist(),
+        # The per-frame decode for `positions`: p = pos_min + q/QUANT_MAX * pos_extent.
+        "pos_min": pos_min.tolist(),
+        "pos_extent": pos_extent.tolist(),
     }
-    arrays = {"positions": positions, "colors": _bake_colors(y, cmap)}
+    arrays = {"positions": quantized, "colors": _bake_colors(y, cmap)}
 
     print(f"Exporting {n_frames} frames x {n_points} points ({dims}D) to {out_path}...")
     write_pcmp(out_path, header, arrays)

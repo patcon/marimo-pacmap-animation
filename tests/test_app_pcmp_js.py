@@ -27,21 +27,24 @@ def _run_reader(pcmp_path, tmp_path):
     script = tmp_path / "read.mjs"
     script.write_text(f"""
         import {{ readFileSync }} from 'node:fs';
-        import {{ parsePcmp }} from {json.dumps(str(APP_DIR / "pcmp.js"))};
+        import {{ parsePcmp, dequantizeFrame }} from {json.dumps(str(APP_DIR / "pcmp.js"))};
 
         const buf = readFileSync({json.dumps(str(pcmp_path))});
         // Copy into a standalone ArrayBuffer: Node pools Buffer memory, so
         // buf.buffer carries an arbitrary byteOffset that would break the
         // absolute offsets in the header.
         const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-        const {{ header, positions, colors }} = parsePcmp(ab);
+        const parsed = parsePcmp(ab);
+        const {{ header, positions, colors }} = parsed;
 
         console.log(JSON.stringify({{
           header,
+          positionsType: positions.constructor.name,
           positionsLength: positions.length,
           colorsLength: colors.length,
-          firstPositions: Array.from(positions.subarray(0, 6)),
           firstColors: Array.from(colors.subarray(0, 3)),
+          frame0: Array.from(dequantizeFrame(parsed, 0)),
+          lastFrame: Array.from(dequantizeFrame(parsed, header.frames - 1)),
         }}));
     """)
     out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
@@ -65,6 +68,7 @@ def test_js_reader_agrees_with_the_python_writer(exported, tmp_path):
     assert seen["header"]["frames"] == 7
     assert seen["header"]["points"] == 12
     assert seen["header"]["dims"] == 2
+    assert seen["positionsType"] == "Uint16Array"
     assert seen["positionsLength"] == 7 * 12 * 2
     assert seen["colorsLength"] == 12 * 3
 
@@ -76,11 +80,47 @@ def test_js_reader_recovers_the_exact_float_values(exported, tmp_path):
     out, inputs = exported
     seen = _run_reader(out, tmp_path)
 
-    expected = inputs["trace"][0].reshape(-1)[:6]
-    np.testing.assert_allclose(seen["firstPositions"], expected, rtol=1e-6)
-
     _, arrays = cli.pcmp.read_pcmp(out)
     np.testing.assert_allclose(seen["firstColors"], arrays["colors"][0], rtol=1e-6)
+
+
+@requires_node
+def test_js_dequantize_agrees_with_the_python_reference(exported, tmp_path):
+    """The decode now exists twice -- quantize_positions' inverse in Python, and
+    dequantizeFrame in JS -- so this pins them to each other. A wrong scale or
+    an off-by-one on QUANT_MAX would still *look* plausible in the player."""
+    out, inputs = exported
+    seen = _run_reader(out, tmp_path)
+
+    header, arrays = cli.pcmp.read_pcmp(out)
+    expected = cli.pcmp.dequantize_positions(
+        arrays["positions"], header["pos_min"], header["pos_extent"])
+
+    np.testing.assert_allclose(seen["frame0"], expected[0].reshape(-1), rtol=1e-6)
+    np.testing.assert_allclose(seen["lastFrame"], expected[-1].reshape(-1), rtol=1e-6)
+    # And the decode has to land back on the trace it came from.
+    np.testing.assert_allclose(seen["frame0"], inputs["trace"][0].reshape(-1), atol=1e-4)
+
+
+@requires_node
+def test_js_reader_still_reads_a_pre_quantization_float32_export(exported, tmp_path):
+    """Files exported before positions were quantized carry float32 positions
+    and no pos_min/pos_extent; the player must keep opening them rather than
+    stranding whatever is already in app/data/."""
+    out, inputs = exported
+    header, arrays = cli.pcmp.read_pcmp(out)
+
+    legacy = tmp_path / "legacy.pcmp"
+    old_header = {k: v for k, v in header.items()
+                  if k not in ("pos_min", "pos_extent", "arrays", "version", "payload_offset")}
+    cli.pcmp.write_pcmp(legacy, old_header, {
+        "positions": np.ascontiguousarray(inputs["trace"][:7], dtype=np.float32),
+        "colors": arrays["colors"],
+    })
+
+    seen = _run_reader(legacy, tmp_path)
+    assert seen["positionsType"] == "Float32Array"
+    np.testing.assert_allclose(seen["frame0"], inputs["trace"][0].reshape(-1), rtol=1e-6)
 
 
 @requires_node
