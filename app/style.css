@@ -38,6 +38,11 @@ html, body {
   pointer-events: none;
 }
 
+/* An explicit rule is required: the `display: grid` above outranks the UA
+   stylesheet's `[hidden] { display: none }`, so load()'s `hidden = true`
+   would leave the instructions sitting over the plot. */
+#empty[hidden] { display: none; }
+
 #empty h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.6rem; letter-spacing: 0.02em; }
 #empty p { margin: 0; color: var(--muted); max-width: 46ch; }
 #empty .hint { margin-top: 0.8rem; font-size: 12px; opacity: 0.7; }
