@@ -4,3 +4,7 @@ __pycache__/
 outputs/
 .cache/
 .venv/
+
+# Exported traces copied in for the player; the app itself is tracked.
+app/data/*
+!app/data/.gitkeep

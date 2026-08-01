@@ -43,6 +43,21 @@ def test_build_config_cli_flag_overrides_default():
     assert cfg["mn_ratio"] == 0.8
 
 
+def test_build_config_step_defaults_to_1():
+    """Every iteration is captured unless --step is asked for. 1 rather than
+    the old 3 because a .pcmp web export wants real keyframes between which to
+    interpolate; --step stays an opt-in thinning knob for all renderers."""
+    args = cli.parse_args([])
+    cfg = cli.build_config(args)
+    assert cfg["step"] == 1
+
+
+def test_build_config_step_cli_flag_overrides_default():
+    args = cli.parse_args(["--step", "3"])
+    cfg = cli.build_config(args)
+    assert cfg["step"] == 3
+
+
 def test_build_config_n_components_defaults_to_2():
     args = cli.parse_args([])
     cfg = cli.build_config(args)

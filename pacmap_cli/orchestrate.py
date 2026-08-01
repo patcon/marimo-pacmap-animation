@@ -7,7 +7,7 @@ from .config import build_config, parse_args, resolve_focus_label
 from .datasets import CATEGORICAL_CMAP, color_marker, dataset_meta, is_continuous, load_dataset
 from .fit import fit_trace
 from .paths import param_tag, resolve_output_dir, unique_path
-from .render import RENDERER_FILE_MARKERS, render_animation, render_frame
+from .render import RENDERER_FILE_MARKERS, RENDERER_OUTPUT_EXT, render_animation, render_frame
 from .schedule import build_schedule, preset_defaults
 
 
@@ -144,12 +144,16 @@ def main(argv=None):
     # same directory distinguishable at a glance.
     iter_items = cfg["iter"] if cfg["iter"] is not None else [None]
 
+    # A backend that emits data rather than pixels names its own extension,
+    # since the mp4-vs-png distinction --iter implies is meaningless for it.
+    renderer_ext = RENDERER_OUTPUT_EXT[cfg["renderer"]]
+
     def _suffix_ext(iter_item):
         if iter_item is None:
-            return "", "mp4"
+            return "", renderer_ext or "mp4"
         if isinstance(iter_item, tuple):
-            return f"_iter{iter_item[0]}-{iter_item[1]}", "mp4"
-        return f"_iter{iter_item}", "png"
+            return f"_iter{iter_item[0]}-{iter_item[1]}", renderer_ext or "mp4"
+        return f"_iter{iter_item}", renderer_ext or "png"
 
     # n_components doesn't join --tag-output's param_tag() slug (it's a
     # pipeline choice, not a "differing tunable param" like mn_ratio), but

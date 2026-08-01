@@ -33,23 +33,7 @@ requires_fpl = pytest.mark.skipif(
 )
 
 
-def synthetic_render_inputs(n_points=40, num_iters=(2, 2, 2), n_components=2, seed=0):
-    """Small, fit-free stand-ins for everything run_algorithm() computes
-    before rendering, shaped exactly like the real pipeline's outputs."""
-    rs = np.random.RandomState(seed)
-    total = sum(num_iters)
-    trace = (rs.rand(total + 1, n_points, n_components) * 10).astype(np.float32)
-    y = rs.randint(0, 10, size=n_points)
-    W = cli.weight_schedule(num_iters)
-    pair_neighbors = rs.randint(0, n_points, size=(60, 2))
-    pair_MN = rs.randint(0, n_points, size=(30, 2))
-    pair_FP_history = [(0, rs.randint(0, n_points, size=(80, 2)))]
-    center, r_s = cli.camera_path(trace)
-    return dict(
-        trace=trace, y=y, W=W, pair_neighbors=pair_neighbors, pair_MN=pair_MN,
-        pair_FP_history=pair_FP_history, num_iters=num_iters,
-        center=center, r_s=r_s, rs=rs,
-    )
+from _synthetic import synthetic_render_inputs  # noqa: E402  (shared with the other backends' tests)
 
 
 @requires_fpl
@@ -240,14 +224,14 @@ def test_render_animation_fpl_honors_start_end_and_step(tmp_path):
 
 @requires_fpl
 def test_main_end_to_end_with_fastplotlib_renderer(tmp_path, monkeypatch):
-    def fake_load_mnist(n=None, seed=0):
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
         rs = np.random.RandomState(seed)
         n_points = 60 if n is None else int(n)
         X = rs.rand(n_points, 784).astype(np.float32)
         y = rs.randint(0, 10, size=n_points)
-        return X, y, rs
+        return X, y, rs, cli.datasets.dataset_meta(spec, color)
 
-    monkeypatch.setattr(cli.orchestrate, "load_mnist", fake_load_mnist)
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
     out_dir = tmp_path / "run"
     cli.main([
         "--algorithm", "pacmap",
@@ -258,7 +242,7 @@ def test_main_end_to_end_with_fastplotlib_renderer(tmp_path, monkeypatch):
         "--renderer", "fastplotlib",
         "--output-dir", str(out_dir),
     ])
-    out_file = out_dir / "pacmap_mnist_fpl.mp4"
+    out_file = out_dir / "mnist" / "pacmap_fpl.mp4"
     assert out_file.exists() and out_file.stat().st_size > 0
 
 

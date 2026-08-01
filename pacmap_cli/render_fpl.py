@@ -406,7 +406,7 @@ def render_frame_fpl(
 
 def render_animation_fpl(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-    out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    out_path, n_lines=150, step=1, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",

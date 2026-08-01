@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaCMAP trace player</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+<canvas id="gl"></canvas>
+
+<div id="empty">
+  <h1>PaCMAP trace player</h1>
+  <p>Drop a <code>.pcmp</code> file anywhere on this page,
+     or copy one into <code>app/data/</code> and pick it below.</p>
+  <p class="hint">Export one with
+     <code>--renderer ogl</code>.</p>
+</div>
+
+<div id="drop"><span>Release to load</span></div>
+
+<div id="transport" hidden>
+  <button id="play" title="Play/pause (space)">▶</button>
+  <input id="scrub" type="range" min="0" max="0" value="0" step="1">
+  <span id="readout">—</span>
+</div>
+
+<div id="picker">
+  <select id="files"><option value="">— load a .pcmp —</option></select>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

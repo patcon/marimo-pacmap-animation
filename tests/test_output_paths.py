@@ -35,6 +35,17 @@ def test_param_tag_includes_only_changed_params():
     assert cli.param_tag(cfg) == "nn5_mnr0.8"
 
 
+def test_param_tag_step_follows_the_new_default_of_1():
+    """param_tag only names params differing from DEFAULT_CONFIG, so the
+    step=3 -> step=1 default flip inverts which value is worth tagging."""
+    cfg = dict(cli.DEFAULT_CONFIG)
+    cfg["step"] = 3
+    assert cli.param_tag(cfg) == "step3"
+
+    cfg["step"] = 1
+    assert cli.param_tag(cfg) == "default"
+
+
 def test_param_tag_excludes_algorithm_and_output_dir():
     cfg = dict(cli.DEFAULT_CONFIG)
     cfg["algorithm"] = "localmap"
