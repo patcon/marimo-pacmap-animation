@@ -240,7 +240,7 @@ def _build_renderer_3d(
 
 def _render_animation_mpl(
     trace, y, W, pair_neighbors, pair_MN, pair_FP_history, num_iters, center, r_s, rs,
-    out_path, n_lines=150, step=3, fps=25, title_prefix="",
+    out_path, n_lines=150, step=1, fps=25, title_prefix="",
     point_size=5, point_alpha=1.0,
     edge_style_preset="v1", edge_gamma=0.2,
     overlay_style_preset="v1",
@@ -341,14 +341,21 @@ def _backend_fastplotlib():
     return {"animation": render_fpl.render_animation_fpl, "frame": render_fpl.render_frame_fpl}
 
 
+def _backend_ogl():
+    from . import render_ogl
+    return {"animation": render_ogl.render_animation_ogl, "frame": render_ogl.render_frame_ogl}
+
+
 # Renderer registry: name -> zero-arg factory returning {"animation": fn,
 # "frame": fn}. The factory indirection lets backends with heavy or optional
 # imports (fastplotlib) resolve lazily, only when actually selected. Adding a
 # backend = write its module, add an entry here, extend --renderer's choices
-# in config.py, and give it a RENDERER_FILE_MARKERS entry.
+# in config.py, and give it RENDERER_FILE_MARKERS and RENDERER_OUTPUT_EXT
+# entries.
 RENDERERS = {
     "matplotlib": _backend_matplotlib,
     "fastplotlib": _backend_fastplotlib,
+    "ogl": _backend_ogl,
 }
 
 # Filename marker per renderer (like n_components' _3d marker), so runs of
@@ -357,6 +364,17 @@ RENDERERS = {
 RENDERER_FILE_MARKERS = {
     "matplotlib": "",
     "fastplotlib": "_fpl",
+    "ogl": "_ogl",
+}
+
+# Output extension per renderer. None means "whatever --iter implies" -- an
+# mp4 for a range, a png for a single iteration. A backend that emits data
+# rather than pixels names its own extension instead, since the mp4/png
+# distinction is meaningless for it.
+RENDERER_OUTPUT_EXT = {
+    "matplotlib": None,
+    "fastplotlib": None,
+    "ogl": "pcmp",
 }
 
 

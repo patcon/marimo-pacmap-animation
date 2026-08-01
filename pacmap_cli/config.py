@@ -31,7 +31,7 @@ DEFAULT_CONFIG = {
     "schedule_fp_phase": None,  # w_FP's phase offset from w_MN, in cycles (0.5 = antiphase)
     "seed": 42,
     "n_lines": 150,
-    "step": 3,
+    "step": 1,           # render every Nth captured iteration; 1 = all of them
     "fps": 25,
     "point_size": 5,
     "point_alpha": 1.0,
@@ -151,7 +151,9 @@ def parse_args(argv=None):
                     help=f"pairs drawn per pair-type per frame, or a fraction in (0, 1) for a "
                          f"proportion of that pair type's available pool (default: {d['n_lines']})")
     p.add_argument("--step", type=int, default=None,
-                    help=f"render every Nth captured iteration (default: {d['step']})")
+                    help="render every Nth captured iteration; thins both mp4 frames and "
+                         ".pcmp keyframes, so raise it to shorten a video or shrink a web "
+                         f"export (default: {d['step']})")
     p.add_argument("--fps", type=int, default=None,
                     help=f"(default: {d['fps']})")
     p.add_argument("--point-size", type=float, default=None,
@@ -203,10 +205,13 @@ def parse_args(argv=None):
                          "render several outputs - one png/mp4 fragment per item, sharing a "
                          "single fit/trace - in one invocation "
                          "(default: full 0-total range as an mp4)")
-    p.add_argument("--renderer", choices=["matplotlib", "fastplotlib"], default=None,
+    p.add_argument("--renderer", choices=["matplotlib", "fastplotlib", "ogl"], default=None,
                     help="plotting backend used for rendering. 'fastplotlib' renders "
                          "offscreen on the GPU (requires the optional fastplotlib "
-                         "dependencies) and marks output filenames with _fpl "
+                         "dependencies) and marks output filenames with _fpl. 'ogl' "
+                         "writes no pixels at all: it exports a .pcmp data file (marked "
+                         "_ogl) for the static WebGL player in app/, where you can orbit, "
+                         "zoom and scrub the timeline live "
                          f"(default: {d['renderer']})")
     p.add_argument("--no-cache", action="store_true",
                     help="always refit instead of reusing (or writing) a cached fit for the "

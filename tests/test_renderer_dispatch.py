@@ -35,8 +35,27 @@ def test_param_tag_excludes_renderer():
 
 # --- dispatch registry ---
 
+def test_build_config_renderer_accepts_ogl():
+    args = cli.parse_args(["--renderer", "ogl"])
+    cfg = cli.build_config(args)
+    assert cfg["renderer"] == "ogl"
+
+
 def test_renderers_registry_has_matplotlib_and_fastplotlib():
-    assert set(cli.render.RENDERERS) >= {"matplotlib", "fastplotlib"}
+    assert set(cli.render.RENDERERS) >= {"matplotlib", "fastplotlib", "ogl"}
+
+
+def test_every_renderer_has_a_marker_and_an_extension_entry():
+    """main() looks both up as bare dict lookups, so a backend registered
+    without them is a KeyError rather than a friendly error."""
+    assert set(cli.render.RENDERER_FILE_MARKERS) == set(cli.render.RENDERERS)
+    assert set(cli.render.RENDERER_OUTPUT_EXT) == set(cli.render.RENDERERS)
+
+
+def test_pixel_backends_keep_the_iter_derived_extension():
+    assert cli.render.RENDERER_OUTPUT_EXT["matplotlib"] is None
+    assert cli.render.RENDERER_OUTPUT_EXT["fastplotlib"] is None
+    assert cli.render.RENDERER_OUTPUT_EXT["ogl"] == "pcmp"
 
 
 def test_get_backend_unknown_renderer_raises_value_error():
@@ -95,6 +114,55 @@ def test_main_fastplotlib_filename_gets_fpl_marker(tmp_path, monkeypatch):
     ])
 
     assert (out_dir / "mnist" / "pacmap_fpl.mp4").exists()
+
+
+def test_main_ogl_filename_gets_ogl_marker_and_pcmp_extension(tmp_path, monkeypatch):
+    """The ogl backend writes data, not pixels, so it overrides the mp4/png
+    extension --iter would otherwise imply."""
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
+        rs = np.random.RandomState(seed)
+        n_points = 60 if n is None else int(n)
+        X = rs.rand(n_points, 784).astype(np.float32)
+        y = rs.randint(0, 10, size=n_points)
+        return X, y, rs, cli.datasets.dataset_meta(spec, color)
+
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
+
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    assert (out_dir / "mnist" / "pacmap_ogl.pcmp").exists()
+
+
+def test_main_ogl_single_iter_still_writes_pcmp_not_png(tmp_path, monkeypatch):
+    def fake_load_dataset(spec, n=None, seed=0, color=None):
+        rs = np.random.RandomState(seed)
+        n_points = 60 if n is None else int(n)
+        X = rs.rand(n_points, 784).astype(np.float32)
+        y = rs.randint(0, 10, size=n_points)
+        return X, y, rs, cli.datasets.dataset_meta(spec, color)
+
+    monkeypatch.setattr(cli.orchestrate, "load_dataset", fake_load_dataset)
+
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--iter", "3",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    assert (out_dir / "mnist" / "pacmap_ogl_iter3.pcmp").exists()
 
 
 # --- Task 2: optional dependency + lazy-import guard ---

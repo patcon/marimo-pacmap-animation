@@ -463,3 +463,83 @@ def test_main_records_the_dataset_in_the_cache_entry_metadata(tmp_path, syntheti
 
     meta = json.loads(next(cache_dir.glob("pacmap_*/meta.json")).read_text())
     assert meta["dataset"] == "polis:abc"
+
+
+# --- ogl web export ---
+
+def test_main_ogl_export_round_trips_through_a_real_fit(tmp_path, synthetic_mnist):
+    """The one end-to-end pass over the ogl backend: real fit, real trace,
+    real .pcmp read back. No optional deps and no GPU, so unlike the
+    fastplotlib backend this runs in CI."""
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    out_file = out_dir / "mnist" / "pacmap_ogl.pcmp"
+    assert out_file.exists() and out_file.stat().st_size > 0
+
+    header, arrays = cli.pcmp.read_pcmp(out_file)
+    assert header["frames"] == 7          # sum(num_iters) + 1, at the default --step 1
+    assert header["points"] == 60
+    assert header["dims"] == 2
+    assert header["num_iters"] == [2, 2, 2]
+    assert arrays["positions"].shape == (7, 60, 2)
+    assert arrays["colors"].shape == (60, 3)
+
+
+def test_main_ogl_export_honors_step(tmp_path, synthetic_mnist):
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--step", "3",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    header, _ = cli.pcmp.read_pcmp(out_dir / "mnist" / "pacmap_ogl.pcmp")
+    assert header["iters"] == [0, 3, 6]
+
+
+def test_main_ogl_export_carries_the_datasets_colormap(tmp_path, synthetic_polis):
+    """cmap is threaded from dataset_meta through run_algorithm, so a
+    continuous color scheme must reach the exported header."""
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--dataset", "polis:abc",
+        "--color", "polis:n-votes",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    header, _ = cli.pcmp.read_pcmp(out_dir / "polis-abc" / "pacmap_ogl_colorn-votes.pcmp")
+    assert header["cmap"] == "viridis"
+
+
+def test_main_ogl_export_supports_3d(tmp_path, synthetic_mnist):
+    out_dir = tmp_path / "run"
+    cli.main([
+        "--algorithm", "pacmap",
+        "--n", "60",
+        "--n-neighbors", "5",
+        "--num-iters", "2,2,2",
+        "--n-components", "3",
+        "--renderer", "ogl",
+        "--output-dir", str(out_dir),
+    ])
+
+    header, arrays = cli.pcmp.read_pcmp(out_dir / "mnist" / "pacmap_3d_ogl.pcmp")
+    assert header["dims"] == 3
+    assert arrays["positions"].shape[2] == 3
