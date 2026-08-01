@@ -24,6 +24,9 @@ const canvas = document.getElementById('gl');
 const renderer = new Renderer({ canvas, dpr: Math.min(window.devicePixelRatio, 2), alpha: false });
 const gl = renderer.gl;
 gl.clearColor(...BG, 1);
+// The depth-sorted draw order is a Uint32 index buffer, which WebGL1 only
+// accepts behind an extension. WebGL2 (what OGL picks when it can) has it core.
+if (!renderer.isWebgl2) gl.getExtension('OES_element_index_uint');
 
 const camera = new Camera(gl, { fov: FOV, near: 0.01, far: 1000 });
 const scene = new Transform();
@@ -54,6 +57,7 @@ const view = {
   interpolate: true,
   pointSize: 1,
   pointAlpha: 1,
+  depthSort: true,
   followCamera: false,
 };
 
@@ -123,6 +127,9 @@ function buildMesh() {
     posA: { size: dims, data: positions.slice(0, stride) },
     posB: { size: dims, data: positions.slice(0, stride) },
     color: { size: 3, data: colors },
+    // Drawing through an index buffer is what makes depth sorting a matter of
+    // permuting `points` integers rather than re-uploading every attribute.
+    index: { data: identityOrder(points) },
   });
 
   const program = new Program(gl, {
@@ -163,6 +170,94 @@ function setFramePair(a, b) {
   posB.data.set(positions.subarray(b * stride, (b + 1) * stride));
   posB.needsUpdate = true;
   uploaded = [a, b];
+}
+
+// ---------------------------------------------------------------- depth sort
+
+// Points are blended, not depth-tested: they are semi-transparent, so a depth
+// test would make whichever one drew first cull everything behind it. The cost
+// is that the GPU then composites them in buffer order, and a point behind
+// another can paint over it. Sorting the index buffer back-to-front along the
+// view axis restores the z-order -- at the price of an O(n log n) sort per
+// frame on the CPU, which is why it is a toggle rather than always on.
+//
+// (Same trade-off, and the same resolution, as the fastplotlib backend's
+// DEPTH_SORT_POINTS; see render_fpl.py.)
+
+/** Scratch view-space depth per point, and the last state we sorted for. */
+let depths = null;
+let sortedFor = '';
+
+function identityOrder(points) {
+  const order = new Uint32Array(points);
+  for (let i = 0; i < points; i++) order[i] = i;
+  return order;
+}
+
+/** Upload the current draw order to the GPU.
+ *
+ *  Setting `needsUpdate` is NOT enough for this one attribute: OGL's
+ *  `Geometry.draw()` re-uploads only the attributes named in
+ *  `program.attributeLocations`, and `index` is never among them (it feeds
+ *  drawElements, not a shader input), so it would otherwise keep the order it
+ *  was constructed with forever. Uploading it by hand means binding the mesh's
+ *  VAO first, since the ELEMENT_ARRAY_BUFFER binding is VAO state.
+ *
+ *  @returns {boolean} false before the first draw, when the VAO doesn't exist.
+ */
+function uploadOrder() {
+  const geometry = mesh.geometry;
+  const key = mesh.program.attributeOrder;
+  const vao = geometry.VAOs[key];
+  if (!vao) return false;
+
+  renderer.bindVertexArray(vao);
+  // Tell OGL the VAO it is about to want is already bound, so `draw()` skips
+  // rebinding it rather than fighting us for it.
+  renderer.currentGeometry = `${geometry.id}_${key}`;
+  renderer.state.boundBuffer = null;
+  geometry.updateAttribute(geometry.attributes.index);
+  return true;
+}
+
+/** Order the draw indices farthest-first for frame `f`, if anything moved. */
+function depthSort(f) {
+  const { positions, header } = data;
+  const { points, dims } = header;
+  const p = camera.position;
+  // Re-sorting only when the frame or the camera actually changed keeps a
+  // parked view free; during playback that is every frame, as intended.
+  const key = `${f}|${p.x},${p.y},${p.z}|${orbit.target.x},${orbit.target.y},${orbit.target.z}`;
+  if (key === sortedFor) return;
+
+  if (!depths || depths.length !== points) depths = new Float32Array(points);
+
+  // Third row of the view matrix gives view-space z directly (more negative is
+  // farther from the camera). Depths come from keyframe `f` even when
+  // interpolating: the in-between is a fraction of one frame's motion, far too
+  // small to reorder anything.
+  const m = camera.viewMatrix;
+  const [m2, m6, m10, m14] = [m[2], m[6], m[10], m[14]];
+  const base = f * points * dims;
+  for (let i = 0; i < points; i++) {
+    const o = base + i * dims;
+    const z = dims === 3 ? positions[o + 2] : 0;
+    depths[i] = m2 * positions[o] + m6 * positions[o + 1] + m10 * z + m14;
+  }
+
+  mesh.geometry.attributes.index.data.sort((a, b) => depths[a] - depths[b]);
+  // Only bank the guard key once the order is actually on the GPU, so the
+  // pre-VAO first frame re-sorts next tick instead of being skipped forever.
+  if (uploadOrder()) sortedFor = key;
+}
+
+/** Put the draw order back to buffer order when sorting is switched off. */
+function resetOrder() {
+  if (!mesh) return;
+  const { data: order } = mesh.geometry.attributes.index;
+  for (let i = 0; i < order.length; i++) order[i] = i;
+  uploadOrder();
+  sortedFor = '';
 }
 
 // ---------------------------------------------------------------- camera
@@ -280,6 +375,9 @@ function buildPane() {
   // spending most of its travel on sizes nobody picks.
   points.addBinding(view, 'pointSize', { label: 'size (px)', min: 0.1, max: 2, step: 0.01 });
   points.addBinding(view, 'pointAlpha', { label: 'opacity', min: 0.02, max: 1, step: 0.01 });
+  points
+    .addBinding(view, 'depthSort', { label: 'depth sort' })
+    .on('change', (e) => { if (!e.value) resetOrder(); });
 
   const cam = pane.addFolder({ title: 'camera' });
   cam.addBinding(view, 'followCamera', { label: 'follow path' });
@@ -304,6 +402,7 @@ function load(buffer, name) {
 
   scene.children.slice().forEach((c) => c.setParent(null));
   uploaded = [-1, -1];
+  sortedFor = '';
   mesh = buildMesh();
   mesh.setParent(scene);
 
@@ -401,6 +500,10 @@ function tick(now) {
   smoothedFps += (1 / Math.max(dt, 1e-4) - smoothedFps) * 0.1;
   readouts.drawFps = smoothedFps;
 
+  // Before the frame is drawn (and before any depth sort reads the camera),
+  // so the sort and the draw agree on where the camera is.
+  orbit.update();
+
   if (data) {
     if (view.playing) {
       const next = view.frame + dt * view.fps;
@@ -426,9 +529,15 @@ function tick(now) {
     mesh.program.uniforms.uAlpha.value = view.pointAlpha;
 
     if (view.followCamera) followCameraPath(a);
+
+    if (view.depthSort) {
+      // The view matrix is otherwise only refreshed inside render(), which is
+      // one call too late to sort against.
+      camera.updateMatrixWorld();
+      depthSort(a);
+    }
   }
 
-  orbit.update();
   if (pane) pane.refresh();
   renderer.render({ scene, camera });
 }
